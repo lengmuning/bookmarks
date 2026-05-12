@@ -1,0 +1,23 @@
+name = "safari-bookmarks-sync"
+main = "src/index.ts"
+compatibility_date = "2025-05-12"
+
+[[durable_objects.bindings]]
+name = "SYNC_CHANNEL"
+class_name = "SyncChannel"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = [ "SyncChannel" ]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bookmarks-db"
+database_id = "PLACEHOLDER"
+
+[[kv_namespaces]]
+binding = "BOOKMARKS_KV"
+id = "PLACEHOLDER"
+
+[observability]
+enabled = true

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bookmarks Sync</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup">
+    <h1>🔄 Bookmarks Sync</h1>
+
+    <div id="status-paired" class="hidden">
+      <div class="status-badge paired">Paired</div>
+      <p class="info">Safari bookmarks are syncing to your other browsers.</p>
+      <p class="detail">Pair ID: <code id="pair-id-display"></code></p>
+      <p class="detail">Last sync: <span id="last-sync">Never</span></p>
+      <button id="btn-unpair" class="btn secondary">Unpair</button>
+    </div>
+
+    <div id="status-unpaired" class="hidden">
+      <div class="status-badge unpaired">Not Paired</div>
+      <p class="info">Generate a pairing code and enter it in your Chrome or Firefox extension.</p>
+      <button id="btn-generate" class="btn primary">Generate Pairing Code</button>
+      <div id="code-display" class="hidden">
+        <p class="code-label">Your pairing code:</p>
+        <div class="code">######</div>
+        <p class="expires">Expires in 1 hour</p>
+      </div>
+    </div>
+
+    <hr>
+    <p class="api-section">
+      <label for="api-url">Worker URL:</label>
+      <input type="text" id="api-url" placeholder="https://your-worker.workers.dev">
+      <button id="btn-save-url" class="btn small">Save</button>
+    </p>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
