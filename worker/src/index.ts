@@ -8,6 +8,12 @@ export { SyncChannel } from "./durable/SyncChannel";
 
 const router = AutoRouter();
 
+router.get("/", () => Response.json({
+  name: "Safari Bookmarks Sync",
+  status: "ok",
+  endpoints: ["/health", "/api/pair/generate", "/api/pair/join", "/api/sync"],
+}));
+
 // CORS headers for browser extensions
 function cors(r: Response): Response {
   r.headers.set("Access-Control-Allow-Origin", "*");
