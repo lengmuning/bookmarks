@@ -17,12 +17,12 @@ new_sqlite_classes = [ "SyncChannel" ]
 # Binding variable name used by code: env.DB
 binding = "DB"
 database_name = "bookmarks-db"
-database_id = "PLACEHOLDER"
+database_id = "fa4874a5-b4fd-45bd-b85d-de161c06ed0c"
 
 [[kv_namespaces]]
 # Binding variable name used by code: env.BOOKMARKS_KV
 binding = "BOOKMARKS_KV"
-id = "PLACEHOLDER"
+id = "e95f409591ab4011bcf8401fb243ccbe"
 
 [observability]
 enabled = true
