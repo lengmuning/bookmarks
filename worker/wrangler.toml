@@ -1,4 +1,4 @@
-name = "safari-bookmarks-sync"
+name = "bookmarks"
 main = "src/index.ts"
 compatibility_date = "2025-05-12"
 
