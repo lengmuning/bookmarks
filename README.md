@@ -85,6 +85,17 @@ npx wrangler deploy
 
 After deployment, note the Worker URL, for example `https://bookmarks.yourname.workers.dev`.
 
+部署成功后访问 Worker 根路径应返回 JSON 状态，不应该是 `Hello World`。例如：
+
+After a successful deployment, opening the Worker root URL should return a JSON status response, not `Hello World`. For example:
+
+```json
+{
+  "name": "Safari Bookmarks Sync",
+  "status": "ok"
+}
+```
+
 ### GitHub 自动部署 / GitHub automatic deployment
 
 如果使用 Cloudflare Workers & Pages 连接 GitHub 仓库，推荐设置：
