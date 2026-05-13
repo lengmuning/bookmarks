@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Safari Bookmarks Sync",
+  "version": "1.0.0",
+  "description": "Sync Safari bookmarks to Chrome and Firefox via Cloudflare",
+  "permissions": ["storage"],
+  "host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Bookmarks Sync",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
