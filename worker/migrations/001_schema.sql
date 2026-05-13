@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS bookmarks (
   title TEXT,
   url TEXT,
   parent_id TEXT,
+  folder_path TEXT,
   idx INTEGER,
   action TEXT NOT NULL,
   timestamp INTEGER NOT NULL,

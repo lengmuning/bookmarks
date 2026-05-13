@@ -7,7 +7,8 @@
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "db:migrate": "wrangler d1 execute bookmarks-db --file=migrations/001_schema.sql",
-    "db:migrate:device-tokens": "wrangler d1 execute bookmarks-db --file=migrations/002_device_tokens.sql"
+    "db:migrate:device-tokens": "wrangler d1 execute bookmarks-db --file=migrations/002_device_tokens.sql",
+    "db:migrate:folder-paths": "wrangler d1 execute bookmarks-db --file=migrations/003_folder_paths.sql"
   },
   "dependencies": {
     "itty-router": "^5.0.18"

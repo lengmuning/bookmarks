@@ -85,6 +85,7 @@ export interface BookmarkEvent {
     title?: string;
     url?: string;
     parentId?: string;
+    folderPath?: string[];
     index?: number;
   };
 }

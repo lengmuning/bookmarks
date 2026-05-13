@@ -12,6 +12,7 @@ interface SyncBody {
     title?: string;
     url?: string;
     parentId?: string;
+    folderPath?: string[];
     index?: number;
   };
 }
@@ -32,12 +33,16 @@ export async function handleSync(request: IRequest, env: Env): Promise<Response>
   const now = Date.now();
 
   // Write to D1
+  const folderPath = Array.isArray(bookmark.folderPath)
+    ? JSON.stringify(bookmark.folderPath.filter(part => typeof part === "string" && part.trim()))
+    : null;
+
   await env.DB.prepare(
-    `INSERT INTO bookmarks (id, pair_id, bookmark_id, title, url, parent_id, idx, action, timestamp)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO bookmarks (id, pair_id, bookmark_id, title, url, parent_id, folder_path, idx, action, timestamp)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     id, pair_id, bookmark.id, bookmark.title ?? null, bookmark.url ?? null,
-    bookmark.parentId ?? null, bookmark.index ?? null, action, now
+    bookmark.parentId ?? null, folderPath, bookmark.index ?? null, action, now
   ).run();
 
   // Broadcast via Durable Object
@@ -51,6 +56,7 @@ export async function handleSync(request: IRequest, env: Env): Promise<Response>
       title: bookmark.title,
       url: bookmark.url,
       parentId: bookmark.parentId,
+      folderPath: bookmark.folderPath,
       index: bookmark.index,
     },
   });

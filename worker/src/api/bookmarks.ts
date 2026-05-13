@@ -1,6 +1,24 @@
 import { IRequest } from "itty-router";
 import { validateDevice } from "../utils/auth";
 
+function withFolderPath(row: any) {
+  let folderPath: string[] = [];
+  if (typeof row.folder_path === "string" && row.folder_path) {
+    try {
+      const parsed = JSON.parse(row.folder_path);
+      if (Array.isArray(parsed)) {
+        folderPath = parsed.filter(part => typeof part === "string" && part.trim());
+      }
+    } catch {
+      folderPath = [];
+    }
+  }
+  return {
+    ...row,
+    folderPath,
+  };
+}
+
 export async function handleGetBookmarks(request: IRequest, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const pairId = url.searchParams.get("pair_id");
@@ -18,7 +36,7 @@ export async function handleGetBookmarks(request: IRequest, env: Env): Promise<R
 
   // Build a snapshot: for each bookmark_id, get the latest non-remove entry
   const result = await env.DB.prepare(`
-    SELECT b.bookmark_id, b.title, b.url, b.parent_id, b.idx, b.action, b.timestamp
+    SELECT b.bookmark_id, b.title, b.url, b.parent_id, b.folder_path, b.idx, b.action, b.timestamp
     FROM bookmarks b
     INNER JOIN (
       SELECT bookmark_id, MAX(timestamp) AS max_ts
@@ -31,7 +49,7 @@ export async function handleGetBookmarks(request: IRequest, env: Env): Promise<R
   `).bind(pairId, pairId).all();
 
   // Filter out removed bookmarks, build tree
-  const active = result.results.filter((r: any) => r.action !== "remove");
+  const active = result.results.filter((r: any) => r.action !== "remove").map(withFolderPath);
 
   return Response.json({
     pair_id: pairId,
@@ -63,7 +81,7 @@ export async function handleGetBookmarksSince(request: IRequest, env: Env): Prom
 
   return Response.json({
     pair_id: pairId,
-    changes: result.results,
+    changes: result.results.map(withFolderPath),
     count: result.results.length,
   });
 }
