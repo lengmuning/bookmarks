@@ -1,6 +1,7 @@
 const STORAGE_KEY = "sync_config";
 const ALARM_NAME = "sync-check";
 const WS_ALARM = "ws-keepalive";
+const SAFARI_ROOT_FOLDER = "Safari Bookmarks";
 
 let wsPort = null;
 
@@ -26,6 +27,25 @@ function authQuery(config) {
 
 // --- Bookmark sync operations ---
 
+function normalizeFolderPath(bookmark) {
+  const path = Array.isArray(bookmark.folderPath) ? bookmark.folderPath : parseFolderPath(bookmark.folder_path);
+  return path
+    .map(part => String(part || "").trim())
+    .filter(Boolean)
+    .filter((part, index, parts) => index === 0 || part !== parts[index - 1]);
+}
+
+function parseFolderPath(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 async function ensureFolderPath(pathParts, parentId) {
   let currentParent = parentId;
   for (const part of pathParts) {
@@ -45,34 +65,47 @@ async function ensureFolderPath(pathParts, parentId) {
   return currentParent;
 }
 
+async function targetParentIdFor(bookmark) {
+  return ensureFolderPath([SAFARI_ROOT_FOLDER, ...normalizeFolderPath(bookmark)], "1");
+}
+
+async function findBookmarkInParent(url, parentId) {
+  const existing = await chrome.bookmarks.search({ url });
+  return existing.find(b => b.parentId === parentId);
+}
+
 async function applyBookmarkChange(event) {
   const { action, bookmark } = event;
   try {
     if (action === "create") {
-      // Check if URL already exists
+      const parentId = await targetParentIdFor(bookmark);
+
       if (bookmark.url) {
-        const existing = await chrome.bookmarks.search({ url: bookmark.url });
-        if (existing.length > 0) {
-          console.log("[Sync] Bookmark already exists:", bookmark.url);
+        const existing = await findBookmarkInParent(bookmark.url, parentId);
+        if (existing) {
+          if (bookmark.title && existing.title !== bookmark.title) {
+            await chrome.bookmarks.update(existing.id, { title: bookmark.title });
+          }
+          console.log("[Sync] Bookmark already exists in target folder:", bookmark.url);
           return;
         }
       }
 
       await chrome.bookmarks.create({
-        parentId: "1",
+        parentId,
         title: bookmark.title || "Untitled",
         url: bookmark.url,
       });
       console.log("[Sync] Created bookmark:", bookmark.title);
     } else if (action === "update") {
-      // Find by matching bookmark_id stored in our system
+      const parentId = await targetParentIdFor(bookmark);
       if (bookmark.url) {
-        const existing = await chrome.bookmarks.search({ url: bookmark.url });
-        if (existing.length > 0) {
+        const existing = await findBookmarkInParent(bookmark.url, parentId);
+        if (existing) {
           const changes = {};
           if (bookmark.title) changes.title = bookmark.title;
           if (bookmark.url) changes.url = bookmark.url;
-          await chrome.bookmarks.update(existing[0].id, changes);
+          await chrome.bookmarks.update(existing.id, changes);
           console.log("[Sync] Updated bookmark:", bookmark.title);
         }
       }
@@ -130,6 +163,8 @@ async function checkForChanges() {
             title: change.title,
             url: change.url,
             parentId: change.parent_id,
+            folderPath: change.folderPath,
+            folder_path: change.folder_path,
             index: change.idx,
           }
         });

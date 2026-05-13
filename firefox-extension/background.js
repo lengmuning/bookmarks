@@ -1,4 +1,5 @@
 const STORAGE_KEY = "sync_config";
+const SAFARI_ROOT_FOLDER = "Safari Bookmarks";
 let ws = null;
 let pingTimer = null;
 let reconnectTimer = null;
@@ -25,31 +26,84 @@ function authQuery(config) {
 
 // --- Bookmark operations ---
 
+function normalizeFolderPath(bookmark) {
+  const path = Array.isArray(bookmark.folderPath) ? bookmark.folderPath : parseFolderPath(bookmark.folder_path);
+  return path
+    .map(part => String(part || "").trim())
+    .filter(Boolean)
+    .filter((part, index, parts) => index === 0 || part !== parts[index - 1]);
+}
+
+function parseFolderPath(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function ensureFolderPath(pathParts, parentId) {
+  let currentParent = parentId;
+  for (const part of pathParts) {
+    if (!part) continue;
+    const existing = await browser.bookmarks.search({ title: part });
+    const folder = existing.find(b => !b.url && b.parentId === currentParent);
+    if (folder) {
+      currentParent = folder.id;
+    } else {
+      const created = await browser.bookmarks.create({
+        parentId: currentParent,
+        title: part,
+      });
+      currentParent = created.id;
+    }
+  }
+  return currentParent;
+}
+
+async function targetParentIdFor(bookmark) {
+  return ensureFolderPath([SAFARI_ROOT_FOLDER, ...normalizeFolderPath(bookmark)], "unfiled_____");
+}
+
+async function findBookmarkInParent(url, parentId) {
+  const existing = await browser.bookmarks.search({ url });
+  return existing.find(b => b.parentId === parentId);
+}
+
 async function applyBookmarkChange(event) {
   const { action, bookmark } = event;
   try {
     if (action === "create") {
+      const parentId = await targetParentIdFor(bookmark);
+
       if (bookmark.url) {
-        const existing = await browser.bookmarks.search({ url: bookmark.url });
-        if (existing.length > 0) {
-          console.log("[Sync] Bookmark already exists:", bookmark.url);
+        const existing = await findBookmarkInParent(bookmark.url, parentId);
+        if (existing) {
+          if (bookmark.title && existing.title !== bookmark.title) {
+            await browser.bookmarks.update(existing.id, { title: bookmark.title });
+          }
+          console.log("[Sync] Bookmark already exists in target folder:", bookmark.url);
           return;
         }
       }
       await browser.bookmarks.create({
-        parentId: "unfiled_____",
+        parentId,
         title: bookmark.title || "Untitled",
         url: bookmark.url,
       });
       console.log("[Sync] Created bookmark:", bookmark.title);
     } else if (action === "update") {
+      const parentId = await targetParentIdFor(bookmark);
       if (bookmark.url) {
-        const existing = await browser.bookmarks.search({ url: bookmark.url });
-        if (existing.length > 0) {
+        const existing = await findBookmarkInParent(bookmark.url, parentId);
+        if (existing) {
           const changes = {};
           if (bookmark.title) changes.title = bookmark.title;
           if (bookmark.url) changes.url = bookmark.url;
-          await browser.bookmarks.update(existing[0].id, changes);
+          await browser.bookmarks.update(existing.id, changes);
           console.log("[Sync] Updated bookmark:", bookmark.title);
         }
       }
@@ -155,6 +209,8 @@ async function checkForChanges() {
             title: change.title,
             url: change.url,
             parentId: change.parent_id,
+            folderPath: change.folderPath,
+            folder_path: change.folder_path,
             index: change.idx,
           }
         });
@@ -180,12 +236,13 @@ async function fullSync() {
 
     if (data.bookmarks) {
       for (const bm of data.bookmarks) {
+        const parentId = await targetParentIdFor(bm);
         if (bm.url) {
-          const existing = await browser.bookmarks.search({ url: bm.url });
-          if (existing.length > 0) continue;
+          const existing = await findBookmarkInParent(bm.url, parentId);
+          if (existing) continue;
         }
         await browser.bookmarks.create({
-          parentId: "unfiled_____",
+          parentId,
           title: bm.title || "Untitled",
           url: bm.url || undefined,
         });

@@ -34,6 +34,7 @@ struct NativeBookmark: Encodable {
     let title: String
     let url: String
     let parentId: String
+    let folderPath: [String]
     let index: Int
 }
 
@@ -239,11 +240,11 @@ class ViewController: PlatformViewController, WKNavigationDelegate, WKScriptMess
         }
 
         var bookmarks: [NativeBookmark] = []
-        collectBookmarks(from: root, folderPath: ["Safari"], parentId: "safari-root", into: &bookmarks)
+        collectBookmarks(from: root, folderPath: [], parentId: "safari-root", indexInParent: 0, into: &bookmarks)
         return bookmarks
     }
 
-    private func collectBookmarks(from node: [String: Any], folderPath: [String], parentId: String, into bookmarks: inout [NativeBookmark]) {
+    private func collectBookmarks(from node: [String: Any], folderPath: [String], parentId: String, indexInParent: Int, into bookmarks: inout [NativeBookmark]) {
         let type = node["WebBookmarkType"] as? String
 
         if type == "WebBookmarkTypeLeaf", let url = node["URLString"] as? String, !url.isEmpty {
@@ -257,7 +258,8 @@ class ViewController: PlatformViewController, WKNavigationDelegate, WKScriptMess
                 title: title,
                 url: url,
                 parentId: parentId,
-                index: bookmarks.count
+                folderPath: folderPath,
+                index: indexInParent
             ))
             return
         }
@@ -266,12 +268,39 @@ class ViewController: PlatformViewController, WKNavigationDelegate, WKScriptMess
             return
         }
 
-        let title = (node["Title"] as? String) ?? (folderPath.last ?? "Safari")
-        let nextPath = folderPath + [title]
+        let title = normalizedSafariFolderTitle(node["Title"] as? String)
+        let nextPath = appendFolderTitle(title, to: folderPath)
         let nextParentId = stableId(parts: nextPath)
-        for child in children {
-            collectBookmarks(from: child, folderPath: nextPath, parentId: nextParentId, into: &bookmarks)
+        for (index, child) in children.enumerated() {
+            collectBookmarks(from: child, folderPath: nextPath, parentId: nextParentId, indexInParent: index, into: &bookmarks)
         }
+    }
+
+    private func normalizedSafariFolderTitle(_ title: String?) -> String? {
+        guard let raw = title?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return nil
+        }
+
+        switch raw {
+        case "BookmarksBar":
+            return "Favorites"
+        case "BookmarksMenu":
+            return "Bookmarks Menu"
+        case "com.apple.ReadingList":
+            return "Reading List"
+        default:
+            return raw
+        }
+    }
+
+    private func appendFolderTitle(_ title: String?, to folderPath: [String]) -> [String] {
+        guard let title else {
+            return folderPath
+        }
+        if folderPath.last == title {
+            return folderPath
+        }
+        return folderPath + [title]
     }
 
     private func bookmarksFileAccess() throws -> (url: URL, securityScoped: Bool) {

@@ -103,10 +103,10 @@
 		B5EB6E662FB35A34008901CF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B5EB6E6B2FB35A34008901CF /* Safari Bookmarks Sync Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Safari Bookmarks Sync Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		B5EB6E702FB35A34008901CF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		B5EB6E902FB35A34008901CF /* popup */ = {isa = PBXFileReference; lastKnownFileType = folder; name = popup; path = "../../WebExtension/popup"; sourceTree = "<group>"; };
-		B5EB6E912FB35A34008901CF /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = background.js; path = "../../WebExtension/background.js"; sourceTree = "<group>"; };
-		B5EB6E922FB35A34008901CF /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = icons; path = "../../WebExtension/icons"; sourceTree = "<group>"; };
-		B5EB6E932FB35A34008901CF /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = "../../WebExtension/manifest.json"; sourceTree = "<group>"; };
+		B5EB6E902FB35A34008901CF /* popup */ = {isa = PBXFileReference; lastKnownFileType = folder; name = popup; path = ../../WebExtension/popup; sourceTree = "<group>"; };
+		B5EB6E912FB35A34008901CF /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = background.js; path = ../../WebExtension/background.js; sourceTree = "<group>"; };
+		B5EB6E922FB35A34008901CF /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = icons; path = ../../WebExtension/icons; sourceTree = "<group>"; };
+		B5EB6E932FB35A34008901CF /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = ../../WebExtension/manifest.json; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -852,6 +852,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = C7LPKS46N5;
@@ -894,6 +895,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = C7LPKS46N5;
