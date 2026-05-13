@@ -6,6 +6,7 @@
 
 ## 当前能力
 
+- 支持测试版双向同步：Safari 可以同步到 Firefox / Chrome，Firefox / Chrome 在 `Safari Bookmarks` 目录内的新增或修改也可以回传到 Safari。
 - Safari macOS App 读取 `/Users/<name>/Library/Safari/Bookmarks.plist`，上传到 Worker。
 - Firefox / Chrome 在“其他书签”下创建 `Safari Bookmarks` 根目录，并按 Safari 的 `Favorites/分类文件夹/子文件夹` 结构创建书签。
 - Firefox / Chrome 在 `Safari Bookmarks` 根目录内新增、修改、移动、删除书签时，会把变更上传到 Worker。
@@ -56,7 +57,7 @@ npm install
 npx wrangler d1 create bookmarks-db
 ```
 
-把命令输出里的 `database_id` 填到 [worker/wrangler.toml](/Users/pretty/Downloads/DevOps/bookmarks/worker/wrangler.toml)：
+把命令输出里的 `database_id` 填到 [worker/wrangler.toml](worker/wrangler.toml)：
 
 ```toml
 [[d1_databases]]
@@ -77,7 +78,7 @@ database_id = "替换成 Cloudflare 生成的 D1 database_id"
 npx wrangler kv:namespace create BOOKMARKS_KV
 ```
 
-把命令输出里的 `id` 填到 [worker/wrangler.toml](/Users/pretty/Downloads/DevOps/bookmarks/worker/wrangler.toml)：
+把命令输出里的 `id` 填到 [worker/wrangler.toml](worker/wrangler.toml)：
 
 ```toml
 [[kv_namespaces]]
@@ -92,7 +93,7 @@ id = "替换成 Cloudflare 生成的 KV namespace id"
 
 ### 4. Durable Object 绑定
 
-[worker/wrangler.toml](/Users/pretty/Downloads/DevOps/bookmarks/worker/wrangler.toml) 里已经有：
+[worker/wrangler.toml](worker/wrangler.toml) 里已经有：
 
 ```toml
 [[durable_objects.bindings]]
@@ -128,7 +129,7 @@ npx wrangler d1 execute bookmarks-db --file=migrations/003_folder_paths.sql
 
 ### 6. D1 SQL 结构
 
-当前完整建表 SQL 位于 [worker/migrations/001_schema.sql](/Users/pretty/Downloads/DevOps/bookmarks/worker/migrations/001_schema.sql)：
+当前完整建表 SQL 位于 [worker/migrations/001_schema.sql](worker/migrations/001_schema.sql)：
 
 ```sql
 CREATE TABLE IF NOT EXISTS pairs (
@@ -205,7 +206,7 @@ https://bookmarks.your-domain.workers.dev/
 
 ### Safari macOS App
 
-Safari 端在 [safari-macos/App](/Users/pretty/Downloads/DevOps/bookmarks/safari-macos/App)。
+Safari 端在 [safari-macos/App](safari-macos/App)。
 
 用 Xcode 打开：
 
@@ -250,13 +251,13 @@ xcodebuild \
 1. 打开 `chrome://extensions`。
 2. 开启 `Developer mode`。
 3. 点击 `Load unpacked`。
-4. 选择 [chrome-extension](/Users/pretty/Downloads/DevOps/bookmarks/chrome-extension)。
+4. 选择 [chrome-extension](chrome-extension)。
 
 ### Firefox
 
 1. 打开 `about:debugging#/runtime/this-firefox`。
 2. 点击 `Load Temporary Add-on`。
-3. 选择 [firefox-extension/manifest.json](/Users/pretty/Downloads/DevOps/bookmarks/firefox-extension/manifest.json)。
+3. 选择 [firefox-extension/manifest.json](firefox-extension/manifest.json)。
 
 临时扩展在 Firefox 重启后会失效，需要重新加载。正式分发需要走 Firefox Add-ons 签名流程。
 
