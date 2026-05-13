@@ -1,0 +1,987 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B5EB6E472FB35A34008901CF /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5EB6E462FB35A34008901CF /* AppDelegate.swift */; };
+		B5EB6E492FB35A34008901CF /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5EB6E482FB35A34008901CF /* SceneDelegate.swift */; };
+		B5EB6E4C2FB35A34008901CF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E4A2FB35A34008901CF /* LaunchScreen.storyboard */; };
+		B5EB6E4F2FB35A34008901CF /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E4D2FB35A34008901CF /* Main.storyboard */; };
+		B5EB6E582FB35A34008901CF /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5EB6E572FB35A34008901CF /* AppDelegate.swift */; };
+		B5EB6E5B2FB35A34008901CF /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E592FB35A34008901CF /* Main.storyboard */; };
+		B5EB6E622FB35A34008901CF /* Safari Bookmarks Sync Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B5EB6E612FB35A34008901CF /* Safari Bookmarks Sync Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B5EB6E6C2FB35A34008901CF /* Safari Bookmarks Sync Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B5EB6E6B2FB35A34008901CF /* Safari Bookmarks Sync Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B5EB6E712FB35A34008901CF /* Main.html in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E362FB35A33008901CF /* Main.html */; };
+		B5EB6E722FB35A34008901CF /* Main.html in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E362FB35A33008901CF /* Main.html */; };
+		B5EB6E732FB35A34008901CF /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E382FB35A33008901CF /* Icon.png */; };
+		B5EB6E742FB35A34008901CF /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E382FB35A33008901CF /* Icon.png */; };
+		B5EB6E752FB35A34008901CF /* Style.css in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E392FB35A33008901CF /* Style.css */; };
+		B5EB6E762FB35A34008901CF /* Style.css in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E392FB35A33008901CF /* Style.css */; };
+		B5EB6E772FB35A34008901CF /* Script.js in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E3A2FB35A33008901CF /* Script.js */; };
+		B5EB6E782FB35A34008901CF /* Script.js in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E3A2FB35A33008901CF /* Script.js */; };
+		B5EB6E792FB35A34008901CF /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5EB6E3B2FB35A33008901CF /* ViewController.swift */; };
+		B5EB6E7A2FB35A34008901CF /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5EB6E3B2FB35A33008901CF /* ViewController.swift */; };
+		B5EB6E7B2FB35A34008901CF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E3C2FB35A34008901CF /* Assets.xcassets */; };
+		B5EB6E7C2FB35A34008901CF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E3C2FB35A34008901CF /* Assets.xcassets */; };
+		B5EB6E7D2FB35A34008901CF /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5EB6E3E2FB35A34008901CF /* SafariWebExtensionHandler.swift */; };
+		B5EB6E7E2FB35A34008901CF /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5EB6E3E2FB35A34008901CF /* SafariWebExtensionHandler.swift */; };
+		B5EB6E942FB35A34008901CF /* popup in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E902FB35A34008901CF /* popup */; };
+		B5EB6E952FB35A34008901CF /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E912FB35A34008901CF /* background.js */; };
+		B5EB6E962FB35A34008901CF /* icons in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E922FB35A34008901CF /* icons */; };
+		B5EB6E972FB35A34008901CF /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E932FB35A34008901CF /* manifest.json */; };
+		B5EB6E982FB35A34008901CF /* popup in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E902FB35A34008901CF /* popup */; };
+		B5EB6E992FB35A34008901CF /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E912FB35A34008901CF /* background.js */; };
+		B5EB6E9A2FB35A34008901CF /* icons in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E922FB35A34008901CF /* icons */; };
+		B5EB6E9B2FB35A34008901CF /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = B5EB6E932FB35A34008901CF /* manifest.json */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B5EB6E632FB35A34008901CF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B5EB6E302FB35A33008901CF /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B5EB6E602FB35A34008901CF;
+			remoteInfo = "Safari Bookmarks Sync Extension (iOS)";
+		};
+		B5EB6E6D2FB35A34008901CF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B5EB6E302FB35A33008901CF /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B5EB6E6A2FB35A34008901CF;
+			remoteInfo = "Safari Bookmarks Sync Extension (macOS)";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B5EB6E842FB35A34008901CF /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B5EB6E622FB35A34008901CF /* Safari Bookmarks Sync Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B5EB6E8B2FB35A34008901CF /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B5EB6E6C2FB35A34008901CF /* Safari Bookmarks Sync Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		B5EB6E372FB35A33008901CF /* Base */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = Base; path = Base.lproj/Main.html; sourceTree = "<group>"; };
+		B5EB6E382FB35A33008901CF /* Icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Icon.png; sourceTree = "<group>"; };
+		B5EB6E392FB35A33008901CF /* Style.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = Style.css; sourceTree = "<group>"; };
+		B5EB6E3A2FB35A33008901CF /* Script.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = Script.js; sourceTree = "<group>"; };
+		B5EB6E3B2FB35A33008901CF /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
+		B5EB6E3C2FB35A34008901CF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B5EB6E3E2FB35A34008901CF /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
+		B5EB6E432FB35A34008901CF /* Safari Bookmarks Sync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Safari Bookmarks Sync.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B5EB6E462FB35A34008901CF /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		B5EB6E482FB35A34008901CF /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		B5EB6E4B2FB35A34008901CF /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		B5EB6E4E2FB35A34008901CF /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		B5EB6E502FB35A34008901CF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B5EB6E552FB35A34008901CF /* Safari Bookmarks Sync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Safari Bookmarks Sync.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B5EB6E572FB35A34008901CF /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		B5EB6E5A2FB35A34008901CF /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		B5EB6E5C2FB35A34008901CF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B5EB6E612FB35A34008901CF /* Safari Bookmarks Sync Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Safari Bookmarks Sync Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B5EB6E662FB35A34008901CF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B5EB6E6B2FB35A34008901CF /* Safari Bookmarks Sync Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Safari Bookmarks Sync Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B5EB6E702FB35A34008901CF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B5EB6E902FB35A34008901CF /* popup */ = {isa = PBXFileReference; lastKnownFileType = folder; name = popup; path = ../../WebExtension/popup; sourceTree = "<group>"; };
+		B5EB6E912FB35A34008901CF /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = background.js; path = ../../WebExtension/background.js; sourceTree = "<group>"; };
+		B5EB6E922FB35A34008901CF /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = icons; path = ../../WebExtension/icons; sourceTree = "<group>"; };
+		B5EB6E932FB35A34008901CF /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = ../../WebExtension/manifest.json; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B5EB6E402FB35A34008901CF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B5EB6E522FB35A34008901CF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B5EB6E5E2FB35A34008901CF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B5EB6E682FB35A34008901CF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		B5EB6E2F2FB35A33008901CF = {
+			isa = PBXGroup;
+			children = (
+				B5EB6E342FB35A33008901CF /* Shared (App) */,
+				B5EB6E3D2FB35A34008901CF /* Shared (Extension) */,
+				B5EB6E452FB35A34008901CF /* iOS (App) */,
+				B5EB6E562FB35A34008901CF /* macOS (App) */,
+				B5EB6E652FB35A34008901CF /* iOS (Extension) */,
+				B5EB6E6F2FB35A34008901CF /* macOS (Extension) */,
+				B5EB6E442FB35A34008901CF /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B5EB6E342FB35A33008901CF /* Shared (App) */ = {
+			isa = PBXGroup;
+			children = (
+				B5EB6E3B2FB35A33008901CF /* ViewController.swift */,
+				B5EB6E3C2FB35A34008901CF /* Assets.xcassets */,
+				B5EB6E352FB35A33008901CF /* Resources */,
+			);
+			path = "Shared (App)";
+			sourceTree = "<group>";
+		};
+		B5EB6E352FB35A33008901CF /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				B5EB6E362FB35A33008901CF /* Main.html */,
+				B5EB6E382FB35A33008901CF /* Icon.png */,
+				B5EB6E392FB35A33008901CF /* Style.css */,
+				B5EB6E3A2FB35A33008901CF /* Script.js */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		B5EB6E3D2FB35A34008901CF /* Shared (Extension) */ = {
+			isa = PBXGroup;
+			children = (
+				B5EB6E8F2FB35A34008901CF /* Resources */,
+				B5EB6E3E2FB35A34008901CF /* SafariWebExtensionHandler.swift */,
+			);
+			path = "Shared (Extension)";
+			sourceTree = "<group>";
+		};
+		B5EB6E442FB35A34008901CF /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B5EB6E432FB35A34008901CF /* Safari Bookmarks Sync.app */,
+				B5EB6E552FB35A34008901CF /* Safari Bookmarks Sync.app */,
+				B5EB6E612FB35A34008901CF /* Safari Bookmarks Sync Extension.appex */,
+				B5EB6E6B2FB35A34008901CF /* Safari Bookmarks Sync Extension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B5EB6E452FB35A34008901CF /* iOS (App) */ = {
+			isa = PBXGroup;
+			children = (
+				B5EB6E462FB35A34008901CF /* AppDelegate.swift */,
+				B5EB6E482FB35A34008901CF /* SceneDelegate.swift */,
+				B5EB6E4A2FB35A34008901CF /* LaunchScreen.storyboard */,
+				B5EB6E4D2FB35A34008901CF /* Main.storyboard */,
+				B5EB6E502FB35A34008901CF /* Info.plist */,
+			);
+			path = "iOS (App)";
+			sourceTree = "<group>";
+		};
+		B5EB6E562FB35A34008901CF /* macOS (App) */ = {
+			isa = PBXGroup;
+			children = (
+				B5EB6E572FB35A34008901CF /* AppDelegate.swift */,
+				B5EB6E592FB35A34008901CF /* Main.storyboard */,
+				B5EB6E5C2FB35A34008901CF /* Info.plist */,
+			);
+			path = "macOS (App)";
+			sourceTree = "<group>";
+		};
+		B5EB6E652FB35A34008901CF /* iOS (Extension) */ = {
+			isa = PBXGroup;
+			children = (
+				B5EB6E662FB35A34008901CF /* Info.plist */,
+			);
+			path = "iOS (Extension)";
+			sourceTree = "<group>";
+		};
+		B5EB6E6F2FB35A34008901CF /* macOS (Extension) */ = {
+			isa = PBXGroup;
+			children = (
+				B5EB6E702FB35A34008901CF /* Info.plist */,
+			);
+			path = "macOS (Extension)";
+			sourceTree = "<group>";
+		};
+		B5EB6E8F2FB35A34008901CF /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				B5EB6E902FB35A34008901CF /* popup */,
+				B5EB6E912FB35A34008901CF /* background.js */,
+				B5EB6E922FB35A34008901CF /* icons */,
+				B5EB6E932FB35A34008901CF /* manifest.json */,
+			);
+			name = Resources;
+			path = "Shared (Extension)";
+			sourceTree = SOURCE_ROOT;
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B5EB6E422FB35A34008901CF /* Safari Bookmarks Sync (iOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B5EB6E852FB35A34008901CF /* Build configuration list for PBXNativeTarget "Safari Bookmarks Sync (iOS)" */;
+			buildPhases = (
+				B5EB6E3F2FB35A34008901CF /* Sources */,
+				B5EB6E402FB35A34008901CF /* Frameworks */,
+				B5EB6E412FB35A34008901CF /* Resources */,
+				B5EB6E842FB35A34008901CF /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B5EB6E642FB35A34008901CF /* PBXTargetDependency */,
+			);
+			name = "Safari Bookmarks Sync (iOS)";
+			packageProductDependencies = (
+			);
+			productName = "Safari Bookmarks Sync (iOS)";
+			productReference = B5EB6E432FB35A34008901CF /* Safari Bookmarks Sync.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B5EB6E542FB35A34008901CF /* Safari Bookmarks Sync (macOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B5EB6E8C2FB35A34008901CF /* Build configuration list for PBXNativeTarget "Safari Bookmarks Sync (macOS)" */;
+			buildPhases = (
+				B5EB6E512FB35A34008901CF /* Sources */,
+				B5EB6E522FB35A34008901CF /* Frameworks */,
+				B5EB6E532FB35A34008901CF /* Resources */,
+				B5EB6E8B2FB35A34008901CF /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B5EB6E6E2FB35A34008901CF /* PBXTargetDependency */,
+			);
+			name = "Safari Bookmarks Sync (macOS)";
+			packageProductDependencies = (
+			);
+			productName = "Safari Bookmarks Sync (macOS)";
+			productReference = B5EB6E552FB35A34008901CF /* Safari Bookmarks Sync.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B5EB6E602FB35A34008901CF /* Safari Bookmarks Sync Extension (iOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B5EB6E812FB35A34008901CF /* Build configuration list for PBXNativeTarget "Safari Bookmarks Sync Extension (iOS)" */;
+			buildPhases = (
+				B5EB6E5D2FB35A34008901CF /* Sources */,
+				B5EB6E5E2FB35A34008901CF /* Frameworks */,
+				B5EB6E5F2FB35A34008901CF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Safari Bookmarks Sync Extension (iOS)";
+			packageProductDependencies = (
+			);
+			productName = "Safari Bookmarks Sync Extension (iOS)";
+			productReference = B5EB6E612FB35A34008901CF /* Safari Bookmarks Sync Extension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		B5EB6E6A2FB35A34008901CF /* Safari Bookmarks Sync Extension (macOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B5EB6E882FB35A34008901CF /* Build configuration list for PBXNativeTarget "Safari Bookmarks Sync Extension (macOS)" */;
+			buildPhases = (
+				B5EB6E672FB35A34008901CF /* Sources */,
+				B5EB6E682FB35A34008901CF /* Frameworks */,
+				B5EB6E692FB35A34008901CF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Safari Bookmarks Sync Extension (macOS)";
+			packageProductDependencies = (
+			);
+			productName = "Safari Bookmarks Sync Extension (macOS)";
+			productReference = B5EB6E6B2FB35A34008901CF /* Safari Bookmarks Sync Extension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B5EB6E302FB35A33008901CF /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2630;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					B5EB6E422FB35A34008901CF = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					B5EB6E542FB35A34008901CF = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					B5EB6E602FB35A34008901CF = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					B5EB6E6A2FB35A34008901CF = {
+						CreatedOnToolsVersion = 26.3;
+					};
+				};
+			};
+			buildConfigurationList = B5EB6E332FB35A33008901CF /* Build configuration list for PBXProject "Safari Bookmarks Sync" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = B5EB6E2F2FB35A33008901CF;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B5EB6E442FB35A34008901CF /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B5EB6E422FB35A34008901CF /* Safari Bookmarks Sync (iOS) */,
+				B5EB6E542FB35A34008901CF /* Safari Bookmarks Sync (macOS) */,
+				B5EB6E602FB35A34008901CF /* Safari Bookmarks Sync Extension (iOS) */,
+				B5EB6E6A2FB35A34008901CF /* Safari Bookmarks Sync Extension (macOS) */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B5EB6E412FB35A34008901CF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B5EB6E732FB35A34008901CF /* Icon.png in Resources */,
+				B5EB6E4C2FB35A34008901CF /* LaunchScreen.storyboard in Resources */,
+				B5EB6E712FB35A34008901CF /* Main.html in Resources */,
+				B5EB6E772FB35A34008901CF /* Script.js in Resources */,
+				B5EB6E7B2FB35A34008901CF /* Assets.xcassets in Resources */,
+				B5EB6E4F2FB35A34008901CF /* Main.storyboard in Resources */,
+				B5EB6E752FB35A34008901CF /* Style.css in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B5EB6E532FB35A34008901CF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B5EB6E742FB35A34008901CF /* Icon.png in Resources */,
+				B5EB6E762FB35A34008901CF /* Style.css in Resources */,
+				B5EB6E5B2FB35A34008901CF /* Main.storyboard in Resources */,
+				B5EB6E782FB35A34008901CF /* Script.js in Resources */,
+				B5EB6E7C2FB35A34008901CF /* Assets.xcassets in Resources */,
+				B5EB6E722FB35A34008901CF /* Main.html in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B5EB6E5F2FB35A34008901CF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B5EB6E9B2FB35A34008901CF /* manifest.json in Resources */,
+				B5EB6E9A2FB35A34008901CF /* icons in Resources */,
+				B5EB6E992FB35A34008901CF /* background.js in Resources */,
+				B5EB6E982FB35A34008901CF /* popup in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B5EB6E692FB35A34008901CF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B5EB6E972FB35A34008901CF /* manifest.json in Resources */,
+				B5EB6E962FB35A34008901CF /* icons in Resources */,
+				B5EB6E952FB35A34008901CF /* background.js in Resources */,
+				B5EB6E942FB35A34008901CF /* popup in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B5EB6E3F2FB35A34008901CF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B5EB6E792FB35A34008901CF /* ViewController.swift in Sources */,
+				B5EB6E472FB35A34008901CF /* AppDelegate.swift in Sources */,
+				B5EB6E492FB35A34008901CF /* SceneDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B5EB6E512FB35A34008901CF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B5EB6E7A2FB35A34008901CF /* ViewController.swift in Sources */,
+				B5EB6E582FB35A34008901CF /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B5EB6E5D2FB35A34008901CF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B5EB6E7D2FB35A34008901CF /* SafariWebExtensionHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B5EB6E672FB35A34008901CF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B5EB6E7E2FB35A34008901CF /* SafariWebExtensionHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B5EB6E642FB35A34008901CF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B5EB6E602FB35A34008901CF /* Safari Bookmarks Sync Extension (iOS) */;
+			targetProxy = B5EB6E632FB35A34008901CF /* PBXContainerItemProxy */;
+		};
+		B5EB6E6E2FB35A34008901CF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B5EB6E6A2FB35A34008901CF /* Safari Bookmarks Sync Extension (macOS) */;
+			targetProxy = B5EB6E6D2FB35A34008901CF /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		B5EB6E362FB35A33008901CF /* Main.html */ = {
+			isa = PBXVariantGroup;
+			children = (
+				B5EB6E372FB35A33008901CF /* Base */,
+			);
+			name = Main.html;
+			sourceTree = "<group>";
+		};
+		B5EB6E4A2FB35A34008901CF /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				B5EB6E4B2FB35A34008901CF /* Base */,
+			);
+			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+		B5EB6E4D2FB35A34008901CF /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				B5EB6E4E2FB35A34008901CF /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+		B5EB6E592FB35A34008901CF /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				B5EB6E5A2FB35A34008901CF /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		B5EB6E7F2FB35A34008901CF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		B5EB6E802FB35A34008901CF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		B5EB6E822FB35A34008901CF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "iOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Safari Bookmarks Sync Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.yourCompany.Safari-Bookmarks-Sync.Extension";
+				PRODUCT_NAME = "Safari Bookmarks Sync Extension";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B5EB6E832FB35A34008901CF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "iOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Safari Bookmarks Sync Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.yourCompany.Safari-Bookmarks-Sync.Extension";
+				PRODUCT_NAME = "Safari Bookmarks Sync Extension";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		B5EB6E862FB35A34008901CF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "iOS (App)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Safari Bookmarks Sync";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.yourCompany.Safari-Bookmarks-Sync";
+				PRODUCT_NAME = "Safari Bookmarks Sync";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B5EB6E872FB35A34008901CF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "iOS (App)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Safari Bookmarks Sync";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.yourCompany.Safari-Bookmarks-Sync";
+				PRODUCT_NAME = "Safari Bookmarks Sync";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		B5EB6E892FB35A34008901CF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C7LPKS46N5;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+					ENABLE_USER_SELECTED_FILES = readwrite;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "macOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Safari Bookmarks Sync Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.6;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.yourCompany.Safari-Bookmarks-Sync.Extension";
+				PRODUCT_NAME = "Safari Bookmarks Sync Extension";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B5EB6E8A2FB35A34008901CF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C7LPKS46N5;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+					ENABLE_USER_SELECTED_FILES = readwrite;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "macOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Safari Bookmarks Sync Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.6;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.yourCompany.Safari-Bookmarks-Sync.Extension";
+				PRODUCT_NAME = "Safari Bookmarks Sync Extension";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		B5EB6E8D2FB35A34008901CF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C7LPKS46N5;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "macOS (App)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Safari Bookmarks Sync";
+				INFOPLIST_KEY_NSMainStoryboardFile = Main;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.6;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.yourCompany.Safari-Bookmarks-Sync";
+				PRODUCT_NAME = "Safari Bookmarks Sync";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B5EB6E8E2FB35A34008901CF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C7LPKS46N5;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "macOS (App)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Safari Bookmarks Sync";
+				INFOPLIST_KEY_NSMainStoryboardFile = Main;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.6;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.yourCompany.Safari-Bookmarks-Sync";
+				PRODUCT_NAME = "Safari Bookmarks Sync";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B5EB6E332FB35A33008901CF /* Build configuration list for PBXProject "Safari Bookmarks Sync" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B5EB6E7F2FB35A34008901CF /* Debug */,
+				B5EB6E802FB35A34008901CF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B5EB6E812FB35A34008901CF /* Build configuration list for PBXNativeTarget "Safari Bookmarks Sync Extension (iOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B5EB6E822FB35A34008901CF /* Debug */,
+				B5EB6E832FB35A34008901CF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B5EB6E852FB35A34008901CF /* Build configuration list for PBXNativeTarget "Safari Bookmarks Sync (iOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B5EB6E862FB35A34008901CF /* Debug */,
+				B5EB6E872FB35A34008901CF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B5EB6E882FB35A34008901CF /* Build configuration list for PBXNativeTarget "Safari Bookmarks Sync Extension (macOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B5EB6E892FB35A34008901CF /* Debug */,
+				B5EB6E8A2FB35A34008901CF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B5EB6E8C2FB35A34008901CF /* Build configuration list for PBXNativeTarget "Safari Bookmarks Sync (macOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B5EB6E8D2FB35A34008901CF /* Debug */,
+				B5EB6E8E2FB35A34008901CF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = B5EB6E302FB35A33008901CF /* Project object */;
+}
