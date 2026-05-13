@@ -3,6 +3,10 @@ let ws = null;
 let reconnectTimer = null;
 let pingTimer = null;
 
+function normalizeApiUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
 async function connect() {
   const result = await chrome.storage.local.get(STORAGE_KEY);
   const config = result[STORAGE_KEY] || {};
@@ -12,7 +16,7 @@ async function connect() {
     return;
   }
 
-  const wsUrl = config.api_url.replace("https://", "wss://");
+  const wsUrl = normalizeApiUrl(config.api_url).replace("https://", "wss://").replace("http://", "ws://");
   const params = new URLSearchParams({
     pair_id: config.pair_id,
     device_id: config.device_id,

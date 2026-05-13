@@ -25,6 +25,16 @@ function authQuery(config) {
   }).toString();
 }
 
+function normalizeApiUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function apiEndpoint(config, path) {
+  const base = normalizeApiUrl(config.api_url);
+  if (!base) throw new Error("Worker URL is missing");
+  return `${base}${path}`;
+}
+
 // --- Bookmark sync operations ---
 
 function normalizeFolderPath(bookmark) {
@@ -150,8 +160,9 @@ async function checkForChanges() {
 
   try {
     const since = config.last_sync || 0;
-    const res = await fetch(`${config.api_url}/api/bookmarks/since?${authQuery(config)}&since=${since}`);
+    const res = await fetch(`${apiEndpoint(config, "/api/bookmarks/since")}?${authQuery(config)}&since=${since}`);
     const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
     if (data.changes) {
       for (const change of data.changes) {

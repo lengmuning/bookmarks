@@ -24,6 +24,16 @@ function authQuery(config) {
   }).toString();
 }
 
+function normalizeApiUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function apiEndpoint(config, path) {
+  const base = normalizeApiUrl(config.api_url);
+  if (!base) throw new Error("Worker URL is missing");
+  return `${base}${path}`;
+}
+
 // --- Bookmark operations ---
 
 function normalizeFolderPath(bookmark) {
@@ -131,7 +141,7 @@ async function connectWebSocket() {
     return;
   }
 
-  const wsUrl = config.api_url.replace("https://", "wss://");
+  const wsUrl = normalizeApiUrl(config.api_url).replace("https://", "wss://").replace("http://", "ws://");
   const params = new URLSearchParams({
     pair_id: config.pair_id,
     device_id: config.device_id,
@@ -196,8 +206,9 @@ async function checkForChanges() {
 
   try {
     const since = config.last_sync || 0;
-    const res = await fetch(`${config.api_url}/api/bookmarks/since?${authQuery(config)}&since=${since}`);
+    const res = await fetch(`${apiEndpoint(config, "/api/bookmarks/since")}?${authQuery(config)}&since=${since}`);
     const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
     if (data.changes) {
       for (const change of data.changes) {
@@ -228,30 +239,47 @@ async function checkForChanges() {
 
 async function fullSync() {
   const config = await getConfig();
-  if (!config.pair_id || !config.api_url) return;
+  if (!config.pair_id || !config.api_url) {
+    return { ok: false, error: "Pairing or Worker URL is missing" };
+  }
 
   try {
-    const res = await fetch(`${config.api_url}/api/bookmarks?${authQuery(config)}`);
-    const data = await res.json();
+    const normalizedUrl = normalizeApiUrl(config.api_url);
+    if (normalizedUrl !== config.api_url) {
+      config.api_url = normalizedUrl;
+      await saveConfig(config);
+    }
 
+    const res = await fetch(`${apiEndpoint(config, "/api/bookmarks")}?${authQuery(config)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    let created = 0;
+    let skipped = 0;
     if (data.bookmarks) {
       for (const bm of data.bookmarks) {
         const parentId = await targetParentIdFor(bm);
         if (bm.url) {
           const existing = await findBookmarkInParent(bm.url, parentId);
-          if (existing) continue;
+          if (existing) {
+            skipped += 1;
+            continue;
+          }
         }
         await browser.bookmarks.create({
           parentId,
           title: bm.title || "Untitled",
           url: bm.url || undefined,
         });
+        created += 1;
       }
       config.last_sync = Date.now();
       await saveConfig(config);
     }
+    return { ok: true, total: data.count ?? data.bookmarks?.length ?? 0, created, skipped };
   } catch (err) {
     console.error("Full sync failed:", err);
+    return { ok: false, error: err.message || String(err) };
   }
 }
 
@@ -276,16 +304,19 @@ browser.runtime.onStartup.addListener(() => {
   connectWebSocket();
 });
 
-browser.runtime.onMessage.addListener(async (message) => {
+browser.runtime.onMessage.addListener((message) => {
   if (message.type === "reconnect_ws") {
-    if (ws) {
-      ws.close();
-      ws = null;
-    }
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    await connectWebSocket();
+    return (async () => {
+      if (ws) {
+        ws.close();
+        ws = null;
+      }
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      await connectWebSocket();
+      return { ok: true };
+    })();
   } else if (message.type === "full_sync") {
-    await fullSync();
+    return fullSync();
   }
 });
 

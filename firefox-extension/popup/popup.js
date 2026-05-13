@@ -36,9 +36,13 @@ function showUnpaired() {
   el.statusUnpaired.classList.remove("hidden");
 }
 
+function normalizeApiUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
 document.getElementById("btn-join").addEventListener("click", async () => {
   const code = el.pairCode.value.trim();
-  const apiUrl = el.apiUrl.value.trim();
+  const apiUrl = normalizeApiUrl(el.apiUrl.value);
 
   if (!code || code.length !== 6) {
     alert("Please enter a valid 6-digit pairing code");
@@ -71,9 +75,13 @@ document.getElementById("btn-join").addEventListener("click", async () => {
       last_sync: 0
     };
     await browser.storage.local.set({ [STORAGE_KEY]: config });
+    el.apiUrl.value = apiUrl;
 
     // Trigger full sync + WS reconnect
-    await browser.runtime.sendMessage({ type: "full_sync" });
+    const syncResult = await browser.runtime.sendMessage({ type: "full_sync" });
+    if (syncResult && !syncResult.ok) {
+      alert("Connected, but initial sync failed: " + syncResult.error);
+    }
     await browser.runtime.sendMessage({ type: "reconnect_ws" });
 
     showPaired(config);
@@ -83,7 +91,11 @@ document.getElementById("btn-join").addEventListener("click", async () => {
 });
 
 document.getElementById("btn-sync-now").addEventListener("click", async () => {
-  await browser.runtime.sendMessage({ type: "full_sync" });
+  const syncResult = await browser.runtime.sendMessage({ type: "full_sync" });
+  if (syncResult && !syncResult.ok) {
+    alert("Sync failed: " + syncResult.error);
+    return;
+  }
   const result = await browser.storage.local.get(STORAGE_KEY);
   const config = result[STORAGE_KEY] || {};
   if (config.last_sync) {

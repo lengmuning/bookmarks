@@ -9,6 +9,8 @@ const el = {
   apiUrl: document.getElementById("api-url"),
 };
 
+const SAFARI_ROOT_FOLDER = "Safari Bookmarks";
+
 async function init() {
   const result = await chrome.storage.local.get(STORAGE_KEY);
   const config = result[STORAGE_KEY] || {};
@@ -36,9 +38,60 @@ function showUnpaired() {
   el.statusUnpaired.classList.remove("hidden");
 }
 
+function normalizeApiUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function normalizeFolderPath(bookmark) {
+  const path = Array.isArray(bookmark.folderPath) ? bookmark.folderPath : parseFolderPath(bookmark.folder_path);
+  return path
+    .map(part => String(part || "").trim())
+    .filter(Boolean)
+    .filter((part, index, parts) => index === 0 || part !== parts[index - 1]);
+}
+
+function parseFolderPath(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function ensureFolderPath(pathParts, parentId) {
+  let currentParent = parentId;
+  for (const part of pathParts) {
+    if (!part) continue;
+    const existing = await chrome.bookmarks.search({ title: part });
+    const folder = existing.find(b => !b.url && b.parentId === currentParent);
+    if (folder) {
+      currentParent = folder.id;
+    } else {
+      const created = await chrome.bookmarks.create({
+        parentId: currentParent,
+        title: part,
+      });
+      currentParent = created.id;
+    }
+  }
+  return currentParent;
+}
+
+async function targetParentIdFor(bookmark) {
+  return ensureFolderPath([SAFARI_ROOT_FOLDER, ...normalizeFolderPath(bookmark)], "1");
+}
+
+async function findBookmarkInParent(url, parentId) {
+  const existing = await chrome.bookmarks.search({ url });
+  return existing.find(b => b.parentId === parentId);
+}
+
 document.getElementById("btn-join").addEventListener("click", async () => {
   const code = el.pairCode.value.trim();
-  const apiUrl = el.apiUrl.value.trim();
+  const apiUrl = normalizeApiUrl(el.apiUrl.value);
 
   if (!code || code.length !== 6) {
     alert("Please enter a valid 6-digit pairing code");
@@ -71,9 +124,13 @@ document.getElementById("btn-join").addEventListener("click", async () => {
       last_sync: 0
     };
     await chrome.storage.local.set({ [STORAGE_KEY]: config });
+    el.apiUrl.value = apiUrl;
 
     // Trigger full sync
-    await fullSync(apiUrl, data.pair_id);
+    const syncResult = await fullSync(apiUrl, data.pair_id);
+    if (!syncResult.ok) {
+      alert("Connected, but initial sync failed: " + syncResult.error);
+    }
     showPaired(config);
 
     // Notify offscreen document to connect WebSocket
@@ -86,34 +143,47 @@ document.getElementById("btn-join").addEventListener("click", async () => {
 async function fullSync(apiUrl, pairId) {
   try {
     const config = await getConfig();
+    const normalizedUrl = normalizeApiUrl(apiUrl);
+    if (normalizedUrl !== config.api_url) {
+      await chrome.storage.local.set({ [STORAGE_KEY]: { ...config, api_url: normalizedUrl } });
+    }
     const params = new URLSearchParams({
       pair_id: pairId,
       device_id: config.device_id,
       device_token: config.device_token,
     });
-    const res = await fetch(`${apiUrl}/api/bookmarks?${params.toString()}`);
+    const res = await fetch(`${normalizedUrl}/api/bookmarks?${params.toString()}`);
     const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
+    let created = 0;
+    let skipped = 0;
     if (data.bookmarks) {
       for (const bm of data.bookmarks) {
-        // Check if URL already exists
+        const parentId = await targetParentIdFor(bm);
         if (bm.url) {
-          const existing = await chrome.bookmarks.search({ url: bm.url });
-          if (existing.length > 0) continue;
+          const existing = await findBookmarkInParent(bm.url, parentId);
+          if (existing) {
+            skipped += 1;
+            continue;
+          }
         }
         await chrome.bookmarks.create({
-          parentId: "1",
+          parentId,
           title: bm.title || "Untitled",
           url: bm.url || undefined,
         });
+        created += 1;
       }
 
       await chrome.storage.local.set({
         [STORAGE_KEY]: { ...await getConfig(), last_sync: Date.now() }
       });
     }
+    return { ok: true, total: data.count ?? data.bookmarks?.length ?? 0, created, skipped };
   } catch (err) {
     console.error("Full sync failed:", err);
+    return { ok: false, error: err.message || String(err) };
   }
 }
 
@@ -124,7 +194,11 @@ async function getConfig() {
 
 document.getElementById("btn-sync-now").addEventListener("click", async () => {
   const config = await getConfig();
-  await fullSync(config.api_url, config.pair_id);
+  const syncResult = await fullSync(config.api_url, config.pair_id);
+  if (!syncResult.ok) {
+    alert("Sync failed: " + syncResult.error);
+    return;
+  }
   const updated = await getConfig();
   el.lastSync.textContent = new Date(updated.last_sync).toLocaleString();
 });
