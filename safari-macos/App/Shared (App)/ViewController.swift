@@ -14,6 +14,7 @@ import UIKit
 typealias PlatformViewController = UIViewController
 #elseif os(macOS)
 import Cocoa
+import Darwin
 import SafariServices
 import UniformTypeIdentifiers
 typealias PlatformViewController = NSViewController
@@ -130,7 +131,7 @@ class ViewController: PlatformViewController, WKNavigationDelegate, WKScriptMess
         panel.canChooseFiles = true
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.propertyList]
-        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
+        panel.directoryURL = realUserHomeURL()
             .appendingPathComponent("Library")
             .appendingPathComponent("Safari")
 
@@ -145,7 +146,10 @@ class ViewController: PlatformViewController, WKNavigationDelegate, WKScriptMess
             defaults.set(url.path, forKey: "bookmarks_file_path")
             sendResult(action: "chooseBookmarksFile", payload: statePayload())
         } catch {
-            sendError(action: "chooseBookmarksFile", message: "Could not save bookmarks file access: \(error.localizedDescription)")
+            sendError(
+                action: "chooseBookmarksFile",
+                message: "Could not save bookmarks file access. Select /Users/\(NSUserName())/Library/Safari/Bookmarks.plist. If macOS still blocks it, add this app to System Settings > Privacy & Security > Full Disk Access, or copy Bookmarks.plist to Desktop and choose that copy."
+            )
         }
     }
 
@@ -278,11 +282,18 @@ class ViewController: PlatformViewController, WKNavigationDelegate, WKScriptMess
             return (url, true)
         }
 
-        let defaultUrl = FileManager.default.homeDirectoryForCurrentUser
+        let defaultUrl = realUserHomeURL()
             .appendingPathComponent("Library")
             .appendingPathComponent("Safari")
             .appendingPathComponent("Bookmarks.plist")
         return (defaultUrl, false)
+    }
+
+    private func realUserHomeURL() -> URL {
+        if let passwd = getpwuid(getuid()), let home = passwd.pointee.pw_dir {
+            return URL(fileURLWithPath: String(cString: home))
+        }
+        return URL(fileURLWithPath: "/Users").appendingPathComponent(NSUserName())
     }
 
     private func saveUrl(_ value: String?) {
@@ -344,7 +355,7 @@ class ViewController: PlatformViewController, WKNavigationDelegate, WKScriptMess
 
 #if os(macOS)
         payload["bookmarks_file"] = defaults.string(forKey: "bookmarks_file_path")
-            ?? FileManager.default.homeDirectoryForCurrentUser
+            ?? realUserHomeURL()
                 .appendingPathComponent("Library")
                 .appendingPathComponent("Safari")
                 .appendingPathComponent("Bookmarks.plist")
