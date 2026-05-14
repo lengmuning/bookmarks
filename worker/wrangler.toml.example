@@ -1,0 +1,33 @@
+name = "bookmarks"
+main = "src/index.ts"
+compatibility_date = "2025-05-12"
+
+# Cloudflare Dashboard/Workers bindings must use these exact variable names.
+# Runtime variables/secrets are not required for this project.
+
+[[durable_objects.bindings]]
+name = "SYNC_CHANNEL"
+class_name = "SyncChannel"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = [ "SyncChannel" ]
+
+[[d1_databases]]
+# Binding variable name used by code: env.DB
+binding = "DB"
+database_name = "bookmarks-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+[[kv_namespaces]]
+# Binding variable name used by code: env.BOOKMARKS_KV
+binding = "BOOKMARKS_KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+[observability]
+enabled = true
+
+# Optional: restrict CORS origins. Leave blank to allow only browser extension schemes.
+# Example: "https://myapp.example.com,https://other.example.com"
+# [vars]
+# ALLOWED_WEB_ORIGINS = ""
