@@ -2,12 +2,24 @@ import { IRequest } from "itty-router";
 import { generatePairingCode, hashCode, newDeviceToken, newId } from "../utils/crypto";
 import { bumpRateLimit, checkRateLimit, clientKey, resetRateLimit } from "../utils/rateLimit";
 import { validateRequest } from "../utils/auth";
+import { configuredSecret, secretMatches } from "../v2/access";
 
 const PAIR_CODE_TTL_SEC = 3600;
 const JOIN_RATE_LIMIT = 5;
 const JOIN_RATE_WINDOW_SEC = 3600;
 
+// v1 is kept for devices paired before v2. New groups need the master
+// ACCESS_KEY here; per-user keys only work with /v2/pairs.
 export async function handleGeneratePair(request: IRequest, env: Env): Promise<Response> {
+  const master = configuredSecret(env.ACCESS_KEY);
+  const presented = request.headers.get("X-Access-Key");
+  if (!master || !presented || !(await secretMatches(presented, master))) {
+    return Response.json(
+      { error: "Creating sync groups with the v1 API needs the access key. Update to the v2 apps." },
+      { status: 403 },
+    );
+  }
+
   const ip = clientKey(request as unknown as Request);
   const gate = await checkRateLimit(env, `gen:${ip}`, 20, 3600);
   if (!gate.ok) {

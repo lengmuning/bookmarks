@@ -96,6 +96,22 @@ describe("browser ops", () => {
     expect(ops(store, [{ op: "update", url: A, title: "", folderPath: ["Favorites"] }]).results[0].status).toBe("noop");
   });
 
+  it("rejects inserts beyond the group's bookmark limit", () => {
+    const { results } = applyBrowserOps(
+      store,
+      [
+        { op: "create", url: A, folderPath: [] },
+        { op: "create", url: B, folderPath: [] },
+      ],
+      0,
+      "chrome-device",
+      NOW,
+      1,
+    );
+    expect(results.map(r => r.status)).toEqual(["applied", "rejected"]);
+    expect(results[1].reason).toBe("group_full");
+  });
+
   it("reports invalid ops without touching the store", () => {
     const { results, changed } = ops(store, [
       { op: "create", url: "javascript:alert(1)", title: "x", folderPath: [] },

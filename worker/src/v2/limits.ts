@@ -37,5 +37,17 @@ export const WS = {
 
 export const DEVICE_SEEN_WRITE_INTERVAL_MS = 5 * 60 * 1000;
 
+// Deleted rows are kept this long so offline browsers can learn about the
+// delete; a browser whose cursor is older than the purged range resyncs.
+export const TOMBSTONE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+export const COMPACTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+export const ACCESS = {
+  keyPrefix: "sbk_",
+  minSecretLength: 16,
+  defaultMaxGroups: 1,
+  maxGroupsLimit: 100,
+} as const;
+
 export const PLATFORMS = ["safari", "chrome", "firefox"] as const;
 export type Platform = (typeof PLATFORMS)[number];

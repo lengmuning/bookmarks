@@ -1,5 +1,6 @@
 import { applyCors } from "../utils/cors";
-import { LIMITS } from "./limits";
+import { decideAccess, isAdmin } from "./access";
+import { ACCESS, LIMITS } from "./limits";
 import { formatPairingCode, normalizeDeviceName, normalizePlatform } from "./normalize";
 import type { DeviceAuth, RpcResult } from "./SyncGroup";
 import { bearerToken, isUuid, makeToken } from "./token";
@@ -32,6 +33,7 @@ async function readText(request: Request, maxBytes: number): Promise<string | nu
 async function readSmallJson(request: Request): Promise<Record<string, unknown> | null> {
   const text = await readText(request, SMALL_BODY_BYTES);
   if (text === null) return null;
+  if (!text.trim()) return {};
   try {
     const value = JSON.parse(text);
     return value && typeof value === "object" && !Array.isArray(value) ? value : null;
@@ -43,6 +45,11 @@ async function readSmallJson(request: Request): Promise<Record<string, unknown> 
 function parseCount(value: string | null, fallback: number): number {
   if (value === null || !/^\d{1,15}$/.test(value)) return fallback;
   return Number(value);
+}
+
+function boundedInt(value: unknown, fallback: number, min: number, max: number): number | null {
+  if (value === undefined || value === null) return fallback;
+  return typeof value === "number" && Number.isInteger(value) && value >= min && value <= max ? value : null;
 }
 
 const group = (env: Env, pairId: string) => env.SYNC_GROUP.get(env.SYNC_GROUP.idFromName(pairId));
@@ -58,6 +65,7 @@ export async function handleV2(request: Request, env: Env): Promise<Response> {
       if (request.method !== "GET" || !isUuid(pairId)) return new Response("Unauthorized", { status: 401 });
       return await group(env, pairId).fetch(request);
     }
+    if (url.pathname.startsWith("/v2/admin/")) return await admin(request, env, url);
     return applyCors(request, await route(request, env));
   } catch (err) {
     console.error("v2 request failed", err);
@@ -70,12 +78,27 @@ async function createPair(request: Request, env: Env): Promise<Response> {
   const platform = normalizePlatform(body?.platform);
   if (!body || !platform) return json(400, { error: "invalid_body" });
 
-  const gate = await registry(env).allowCreate(clientIp(request));
-  if (!gate.ok) return json(429, { error: "rate_limited" }, { "Retry-After": String(gate.retryAfterSec ?? 3600) });
+  const access = await decideAccess(env, body.access_key ?? request.headers.get("X-Access-Key"));
+  if (access.kind === "denied") return json(access.status, { error: access.error });
 
   const pairId = crypto.randomUUID();
-  const init = await group(env, pairId).init({ pairId, platform, name: normalizeDeviceName(body.name) });
-  if (init.status !== 200) return fromRpc(init);
+  const reserved = await registry(env).reserveGroup(pairId, access.kind === "issued" ? access.keyHash : null, clientIp(request));
+  if (!reserved.ok) {
+    return reserved.reason === "rate_limited"
+      ? json(429, { error: "rate_limited" }, { "Retry-After": "3600" })
+      : json(403, { error: reserved.reason });
+  }
+
+  const init = await group(env, pairId).init({
+    pairId,
+    platform,
+    name: normalizeDeviceName(body.name),
+    maxBookmarks: reserved.maxBookmarks,
+  });
+  if (init.status !== 200) {
+    await registry(env).releaseGroup(pairId);
+    return fromRpc(init);
+  }
   const created = bodyOf(init);
   const deviceId = String(created.device_id);
   const { code, expiresAt } = await registry(env).issueCode(pairId);
@@ -97,9 +120,11 @@ async function joinPair(request: Request, env: Env): Promise<Response> {
 
   const redeemed = await registry(env).redeem(body.code, clientIp(request));
   if (!redeemed.ok) {
-    return redeemed.reason === "rate_limited"
-      ? json(429, { error: "rate_limited" }, { "Retry-After": String(redeemed.retryAfterSec ?? 3600) })
-      : json(404, { error: "invalid_or_expired_code" });
+    if (redeemed.reason === "rate_limited") {
+      return json(429, { error: "rate_limited" }, { "Retry-After": String(redeemed.retryAfterSec ?? 3600) });
+    }
+    if (redeemed.reason === "group_disabled") return json(403, { error: "group_disabled" });
+    return json(404, { error: "invalid_or_expired_code" });
   }
 
   const added = await group(env, redeemed.pairId).addDevice({ platform, name: normalizeDeviceName(body.name) });
@@ -170,6 +195,60 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (result.status !== 200) return fromRpc(result);
     const issued = bodyOf(result);
     return json(200, { ...issued, path: `/v2/ws?pair=${token.pairId}&ticket=${String(issued.ticket)}` });
+  }
+
+  return json(404, { error: "not_found" });
+}
+
+// Administration with the ADMIN_KEY secret. Returns 404 when it is not set.
+async function admin(request: Request, env: Env, url: URL): Promise<Response> {
+  const allowed = await isAdmin(env, request);
+  if (allowed === null) return json(404, { error: "not_found" });
+  if (!allowed) return json(401, { error: "unauthorized" });
+
+  const path = url.pathname.replace(/\/+$/, "");
+  const method = request.method;
+  const reg = registry(env);
+
+  if (method === "POST" && path === "/v2/admin/keys") {
+    const body = await readSmallJson(request);
+    if (!body) return json(400, { error: "invalid_body" });
+    const maxGroups = boundedInt(body.max_groups, ACCESS.defaultMaxGroups, 1, ACCESS.maxGroupsLimit);
+    const maxBookmarks = boundedInt(body.max_bookmarks, LIMITS.activeBookmarks, 1, LIMITS.activeBookmarks);
+    if (maxGroups === null || maxBookmarks === null) return json(400, { error: "invalid_limits" });
+    const label = typeof body.label === "string" && body.label.trim() ? body.label.trim().slice(0, 100) : null;
+    const created = await reg.createKey({ label, maxGroups, maxBookmarks });
+    return json(200, { ...created, label, max_groups: maxGroups, max_bookmarks: maxBookmarks });
+  }
+
+  if (method === "GET" && path === "/v2/admin/keys") {
+    const [keys, masterGroups] = await Promise.all([reg.listKeys(), reg.masterGroups()]);
+    return json(200, { keys, master_key_groups: masterGroups });
+  }
+
+  if (method === "DELETE" && path.startsWith("/v2/admin/keys/")) {
+    const id = path.slice("/v2/admin/keys/".length);
+    if (!isUuid(id)) return json(400, { error: "invalid_key_id" });
+    const revoked = await reg.revokeKey(id);
+    if (!revoked.found) return json(404, { error: "key_not_found" });
+    await Promise.all(revoked.pairIds.map(pairId => group(env, pairId).disable()));
+    return json(200, { revoked: id, disabled_groups: revoked.pairIds });
+  }
+
+  const groupMatch = path.match(/^\/v2\/admin\/groups\/([0-9a-f-]{36})(\/disable)?$/);
+  if (groupMatch && isUuid(groupMatch[1])) {
+    const pairId = groupMatch[1];
+    if (method === "GET" && !groupMatch[2]) return fromRpc(await group(env, pairId).stats());
+    if (method === "POST" && groupMatch[2]) {
+      await group(env, pairId).disable();
+      await reg.markGroupDisabled(pairId);
+      return json(200, { disabled: pairId });
+    }
+    if (method === "DELETE" && !groupMatch[2]) {
+      await group(env, pairId).purge();
+      await reg.forgetGroup(pairId);
+      return json(200, { deleted: pairId });
+    }
   }
 
   return json(404, { error: "not_found" });

@@ -38,6 +38,13 @@ Every visible change (insert, title/folder change, owner change, delete,
 restore) takes the next `seq`. Index-only changes do not. Clients read changes
 with `seq > cursor`; the cursor is never a timestamp.
 
+A URL has one row per group for its whole life: moving, renaming or
+re-classifying it updates that row. Tombstones are kept for 90 days and then
+purged by a daily Durable Object alarm; the highest purged `seq` becomes the
+group's horizon. A request whose `since` or `base_cursor` is above 0 but below
+the horizon gets `409 cursor_expired`, and the browser starts over with a
+cursor of 0 (snapshot, then pushes judged against a cursor of 0).
+
 ## Browser changes (`POST /v2/changes`)
 
 The request carries `base_cursor`, the last cursor the browser had fully
@@ -106,6 +113,27 @@ download.
   app parks them instead of treating that as a delete, and shows them in the
   menu.
 
+## Access control
+
+Creating a group needs an access key; joining needs a pairing code from an
+existing member.
+
+- `ACCESS_KEY` (Worker secret, at least 16 characters): a shared key. Anyone
+  holding it can create groups, without limits.
+- `ADMIN_KEY` (Worker secret, at least 16 characters): enables `/v2/admin`,
+  which issues per-user keys (`sbk_` + 48 hex characters) with a limit on
+  groups (default 1) and on bookmarks per group (default 50 000). Revoking a key
+  disables all its groups: every call from their devices gets
+  `403 group_disabled` and their pairing codes stop working.
+- With neither secret set, no group can be created (`403
+  access_key_not_configured`).
+- The key is sent as `access_key` in the body of `POST /v2/pairs` (or the
+  `X-Access-Key` header). v1 `POST /api/pair/generate` accepts only the master
+  `ACCESS_KEY`, in `X-Access-Key`.
+
+Groups are never merged across users: two users with the same URL each have
+their own row in their own Durable Object.
+
 ## Pairing and tokens
 
 - `POST /v2/pairs` creates a group and its first device and returns a pairing
@@ -128,7 +156,7 @@ download.
 | method | path | auth |
 |---|---|---|
 | GET | `/v2/health` | none |
-| POST | `/v2/pairs` | none (rate limited) |
+| POST | `/v2/pairs` | access key (rate limited) |
 | POST | `/v2/join` | none (rate limited) |
 | POST | `/v2/pair-code` | token |
 | GET | `/v2/devices` | token |
@@ -140,12 +168,22 @@ download.
 | GET | `/v2/safari/pending` | token (Safari) |
 | POST | `/v2/ws-ticket` | token |
 | GET | `/v2/ws?pair=&ticket=` | ticket |
+| POST | `/v2/admin/keys` | admin (`{label, max_groups, max_bookmarks}`) |
+| GET | `/v2/admin/keys` | admin |
+| DELETE | `/v2/admin/keys/{id}` | admin (revokes and disables its groups) |
+| GET | `/v2/admin/groups/{pair_id}` | admin (usage) |
+| POST | `/v2/admin/groups/{pair_id}/disable` | admin |
+| DELETE | `/v2/admin/groups/{pair_id}` | admin (deletes all its data) |
+
+Admin calls use `Authorization: Bearer <ADMIN_KEY>` and return 404 when
+`ADMIN_KEY` is not set.
 
 ## Limits
 
 URL 4096 chars, title 1024 chars (longer titles are truncated), folder depth
 32, folder name 255 chars, 500 ops per request, 50 000 active bookmarks per
-group, 16 MB request body.
+group (lower if the access key says so), 16 MB request body, 10 group creations
+per IP per hour.
 
 ## Not covered
 
@@ -153,4 +191,3 @@ group, 16 MB request body.
 - Writing the plist does not make Safari upload to iCloud; iCloud may replace
   the imported bookmarks, which is why imports are confirmed before Safari
   takes ownership of them.
-- Tombstones are kept forever.

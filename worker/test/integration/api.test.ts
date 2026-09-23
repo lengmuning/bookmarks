@@ -1,4 +1,4 @@
-import { exports } from "cloudflare:workers";
+import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 
 const BASE = "https://sync.test";
@@ -28,7 +28,7 @@ async function call(method: string, path: string, options: CallOptions = {}) {
 }
 
 async function createGroup() {
-  const safari = await call("POST", "/v2/pairs", { body: { platform: "safari", name: "Test Mac" } });
+  const safari = await call("POST", "/v2/pairs", { body: { platform: "safari", name: "Test Mac", access_key: MASTER } });
   expect(safari.status).toBe(200);
   const chrome = await call("POST", "/v2/join", { body: { code: safari.body.code, platform: "chrome", name: "Chrome" } });
   expect(chrome.status).toBe(200);
@@ -37,10 +37,12 @@ async function createGroup() {
 
 const A = "https://a.example/";
 const B = "https://b.example/";
+const MASTER = "test-master-access-key";
+const ADMIN = "test-admin-key-with-enough-length";
 
 describe("pairing", () => {
   it("creates a group with a formatted single-use code", async () => {
-    const created = await call("POST", "/v2/pairs", { body: { platform: "safari", name: "Mac" } });
+    const created = await call("POST", "/v2/pairs", { body: { platform: "safari", name: "Mac", access_key: MASTER } });
     expect(created.status).toBe(200);
     expect(created.body.code).toMatch(/^[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}$/);
     expect(created.body.token).toMatch(/^v2\.[0-9a-f-]{36}\.[0-9a-f-]{36}\.[0-9a-f]{64}$/);
@@ -55,7 +57,7 @@ describe("pairing", () => {
   });
 
   it("invalidates the previous code when a new one is issued", async () => {
-    const created = await call("POST", "/v2/pairs", { body: { platform: "safari" } });
+    const created = await call("POST", "/v2/pairs", { body: { platform: "safari", access_key: MASTER } });
     const next = await call("POST", "/v2/pair-code", { token: created.body.token });
     expect(next.status).toBe(200);
     expect((await call("POST", "/v2/join", { body: { code: created.body.code, platform: "chrome" } })).status).toBe(404);
@@ -75,7 +77,7 @@ describe("pairing", () => {
       const miss = await call("POST", "/v2/join", { ip, body: { code: "2222-2222", platform: "chrome" } });
       expect(miss.status).toBe(404);
     }
-    const created = await call("POST", "/v2/pairs", { body: { platform: "safari" } });
+    const created = await call("POST", "/v2/pairs", { body: { platform: "safari", access_key: MASTER } });
     const blocked = await call("POST", "/v2/join", { ip, body: { code: created.body.code, platform: "chrome" } });
     expect(blocked.status).toBe(429);
     const other = await call("POST", "/v2/join", { body: { code: created.body.code, platform: "chrome" } });
@@ -83,7 +85,7 @@ describe("pairing", () => {
   });
 
   it("validates request bodies", async () => {
-    expect((await call("POST", "/v2/pairs", { body: { platform: "opera" } })).status).toBe(400);
+    expect((await call("POST", "/v2/pairs", { body: { platform: "opera", access_key: MASTER } })).status).toBe(400);
     expect((await call("POST", "/v2/join", { body: { platform: "chrome" } })).status).toBe(400);
   });
 });
@@ -270,5 +272,103 @@ describe("websocket", () => {
       new Request(`${BASE}/v2/ws?pair=${pairId}&ticket=${"0".repeat(64)}`, { headers: { Upgrade: "websocket" } }),
     );
     expect(bad.status).toBe(401);
+  });
+});
+
+describe("access keys", () => {
+  const adminCall = (method: string, path: string, body?: unknown, key = ADMIN) =>
+    call(method, path, { token: key, body });
+
+  it("requires a valid access key to create a group", async () => {
+    expect((await call("POST", "/v2/pairs", { body: { platform: "safari" } })).status).toBe(401);
+    const wrong = await call("POST", "/v2/pairs", { body: { platform: "safari", access_key: "not-the-key-at-all" } });
+    expect(wrong.status).toBe(403);
+    expect(wrong.body.error).toBe("invalid_access_key");
+    const header = await exports.default.fetch(
+      new Request(`${BASE}/v2/pairs`, {
+        method: "POST",
+        headers: { "CF-Connecting-IP": freshIp(), "X-Access-Key": MASTER, "Content-Type": "application/json" },
+        body: JSON.stringify({ platform: "safari" }),
+      }),
+    );
+    expect(header.status).toBe(200);
+  });
+
+  it("protects the admin API", async () => {
+    expect((await adminCall("GET", "/v2/admin/keys", undefined, "wrong-admin-key-000000000")).status).toBe(401);
+    expect((await call("GET", "/v2/admin/keys")).status).toBe(401);
+    expect((await adminCall("GET", "/v2/admin/keys", undefined, MASTER)).status).toBe(401);
+  });
+
+  it("issues per-user keys with a group limit and revokes them", async () => {
+    const issued = await adminCall("POST", "/v2/admin/keys", { label: "friend", max_groups: 1, max_bookmarks: 2 });
+    expect(issued.status).toBe(200);
+    expect(issued.body.key).toMatch(/^sbk_[0-9a-f]{48}$/);
+
+    const first = await call("POST", "/v2/pairs", { body: { platform: "safari", access_key: issued.body.key } });
+    expect(first.status).toBe(200);
+    const second = await call("POST", "/v2/pairs", { body: { platform: "safari", access_key: issued.body.key } });
+    expect(second.status).toBe(403);
+    expect(second.body.error).toBe("group_limit_reached");
+
+    const three = [A, B, "https://c.example/"].map(url => ({ url, folderPath: [] }));
+    const capped = await call("POST", "/v2/safari/snapshot", { token: first.body.token, body: { bookmarks: three } });
+    expect(capped.body.stats).toMatchObject({ inserted: 2, skipped: 1 });
+
+    const listed = await adminCall("GET", "/v2/admin/keys");
+    const entry = listed.body.keys.find((k: { id: string }) => k.id === issued.body.id);
+    expect(entry).toMatchObject({ label: "friend", max_groups: 1, max_bookmarks: 2, revoked_at: null });
+    expect(entry.groups.map((g: { pair_id: string }) => g.pair_id)).toEqual([first.body.pair_id]);
+
+    const stats = await adminCall("GET", `/v2/admin/groups/${first.body.pair_id}`);
+    expect(stats.body).toMatchObject({ bookmarks: 2, tombstones: 0, max_bookmarks: 2 });
+
+    const revoked = await adminCall("DELETE", `/v2/admin/keys/${issued.body.id}`);
+    expect(revoked.body.disabled_groups).toEqual([first.body.pair_id]);
+    const blocked = await call("GET", "/v2/snapshot", { token: first.body.token });
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.error).toBe("group_disabled");
+    const join = await call("POST", "/v2/join", { body: { code: first.body.code, platform: "chrome" } });
+    expect(join.status).toBe(404);
+    expect((await call("POST", "/v2/pairs", { body: { platform: "safari", access_key: issued.body.key } })).body.error).toBe(
+      "invalid_access_key",
+    );
+  });
+
+  it("disables and deletes single groups", async () => {
+    const { safari, chrome, pairId } = await createGroup();
+    expect((await adminCall("POST", `/v2/admin/groups/${pairId}/disable`)).status).toBe(200);
+    expect((await call("GET", "/v2/snapshot", { token: chrome })).body.error).toBe("group_disabled");
+    expect((await adminCall("DELETE", `/v2/admin/groups/${pairId}`)).status).toBe(200);
+    expect((await call("GET", "/v2/snapshot", { token: safari })).status).toBe(401);
+    expect((await adminCall("GET", `/v2/admin/groups/${pairId}`)).status).toBe(404);
+  });
+
+  it("keeps v1 group creation closed without the master key", async () => {
+    const res = await exports.default.fetch(
+      new Request(`${BASE}/api/pair/generate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }),
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("tombstone compaction", () => {
+  it("purges old tombstones and makes stale cursors resync", async () => {
+    const { chrome, pairId } = await createGroup();
+    await call("POST", "/v2/changes", { token: chrome, body: { base_cursor: 0, ops: [{ op: "create", url: A, folderPath: [] }] } });
+    await call("POST", "/v2/changes", { token: chrome, body: { base_cursor: 1, ops: [{ op: "remove", url: A }] } });
+    await call("POST", "/v2/changes", { token: chrome, body: { base_cursor: 2, ops: [{ op: "create", url: B, folderPath: [] }] } });
+
+    const stub = env.SYNC_GROUP.get(env.SYNC_GROUP.idFromName(pairId));
+    expect(await stub.compact(Date.now())).toEqual({ purged: 0, horizon: 0 });
+    expect(await stub.compact(Date.now() + 91 * 24 * 60 * 60 * 1000)).toEqual({ purged: 1, horizon: 2 });
+
+    const stale = await call("GET", "/v2/changes?since=1", { token: chrome });
+    expect(stale.status).toBe(409);
+    expect(stale.body.error).toBe("cursor_expired");
+    expect((await call("GET", "/v2/changes?since=2", { token: chrome })).status).toBe(200);
+    expect((await call("GET", "/v2/changes?since=0", { token: chrome })).body.changes.map((c: { url: string }) => c.url)).toEqual([B]);
+    const staleOps = await call("POST", "/v2/changes", { token: chrome, body: { base_cursor: 1, ops: [] } });
+    expect(staleOps.status).toBe(409);
   });
 });

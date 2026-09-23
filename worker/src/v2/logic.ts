@@ -77,6 +77,7 @@ export function applyBrowserOps(
   baseCursor: number,
   actor: string,
   now: number,
+  maxActive: number = LIMITS.activeBookmarks,
 ): BrowserOpsResult {
   const results: OpResult[] = [];
   let changed = false;
@@ -129,7 +130,7 @@ export function applyBrowserOps(
     const row = store.get(item.url);
 
     if (!row || (row.removed && row.seq <= baseCursor)) {
-      if (active >= LIMITS.activeBookmarks) {
+      if (active >= maxActive) {
         results.push({ url: item.url, status: "rejected", reason: "group_full" });
         continue;
       }
@@ -202,6 +203,7 @@ export function applySafariSnapshot(
   confirmDeletions: boolean,
   actor: string,
   now: number,
+  maxActive: number = LIMITS.activeBookmarks,
 ): SnapshotResult {
   const stats: SnapshotStats = {
     received: items.length,
@@ -269,7 +271,7 @@ export function applySafariSnapshot(
     }
 
     if (!row) {
-      if (active >= LIMITS.activeBookmarks) {
+      if (active >= maxActive) {
         stats.skipped += 1;
         continue;
       }
@@ -288,7 +290,7 @@ export function applySafariSnapshot(
       active += 1;
       stats.inserted += 1;
     } else if (row.removed) {
-      if (active >= LIMITS.activeBookmarks) {
+      if (active >= maxActive) {
         stats.skipped += 1;
         continue;
       }
