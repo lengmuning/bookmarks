@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="../Style.css">
+    <script src="../Script.js" defer></script>
+</head>
+<body>
+    <main class="shell">
+        <header>
+            <img src="../Icon.png" width="56" height="56" alt="">
+            <div>
+                <h1>Safari Bookmarks Sync</h1>
+                <p id="extension-state">Checking Safari extension state...</p>
+            </div>
+            <button id="open-settings" class="secondary">Safari Settings</button>
+        </header>
+
+        <section class="panel">
+            <label for="api-url">Worker URL</label>
+            <div class="row">
+                <input id="api-url" type="url" placeholder="https://bookmarks.yourname.workers.dev">
+                <button id="save-url">Save</button>
+            </div>
+        </section>
+
+        <section class="panel split">
+            <div>
+                <h2>Pairing</h2>
+                <p id="pair-state">Not paired</p>
+            </div>
+            <div class="actions">
+                <button id="generate-code">Generate Pairing Code</button>
+                <div id="pair-code" class="code hidden">------</div>
+            </div>
+        </section>
+
+        <section class="panel split">
+            <div>
+                <h2>Safari Bookmarks</h2>
+                <p id="bookmarks-state">Default Safari bookmarks file will be used when accessible.</p>
+            </div>
+            <div class="actions">
+                <button id="choose-bookmarks" class="secondary">Choose File</button>
+                <button id="sync-now">Sync Now</button>
+                <button id="pull-remote" class="secondary">Pull Remote Changes</button>
+            </div>
+        </section>
+
+        <section class="panel split">
+            <div>
+                <h2>Remote Changes</h2>
+                <p id="remote-state">No remote check has run yet.</p>
+            </div>
+            <div class="actions">
+                <label class="toggle">
+                    <input id="auto-check" type="checkbox">
+                    <span>Auto Check</span>
+                </label>
+                <button id="check-remote" class="secondary">Check Now</button>
+            </div>
+        </section>
+
+        <p id="status" class="status">Ready</p>
+    </main>
+</body>
+</html>
