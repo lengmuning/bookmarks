@@ -95,9 +95,16 @@ For an active row:
    Safari ends up exactly once in the browser, in Safari's folder.
 
 For a tombstone: remove copies inside the root only. Bookmarks whose URL is not
-in the group are never touched. Before the first sync after joining, the
-extension stores a full backup of the bookmark tree that the popup can
-download.
+in the group are never touched.
+
+When joining, the extension first stores a full backup of the bookmark tree
+(downloadable from the popup), then renames an existing root to `Safari
+Bookmarks (before sync v2)` and starts from an empty one. Bookmarks Safari has
+are moved out of the old folder by the rules above; what remains is left for
+the user to review and is not uploaded, so bookmarks deleted in Safari long
+ago (the v1 extension never synced deletes) do not come back. The old folder
+is removed if nothing is left in it. Moving a bookmark into the new root
+uploads it as usual.
 
 ## Safari import (browser-owned rows into the plist)
 

@@ -19,6 +19,11 @@
   };
   const LEGACY_KEYS = ["sync_config", "local_url_map"];
   const ROOT_TITLE = "Safari Bookmarks";
+  // A sync root found when joining is renamed to this and a fresh root is
+  // created: bookmarks Safari has are moved out of it, what is left (for
+  // example leftovers of the v1 extension, which never synced deletes) stays
+  // for the user to review instead of being uploaded back into Safari.
+  const PREVIOUS_ROOT_TITLE = "Safari Bookmarks (before sync v2)";
   const OTHER_FOLDER_IDS = ["2", "unfiled_____"];
   const MARK_TTL_MS = 10_000;
   const FLUSH_DELAY_MS = 1_500;
@@ -359,7 +364,7 @@
 
     async function cleanupEmptyFolders(rootId) {
       const [sub] = await ext.bookmarks.getSubTree(rootId).catch(() => []);
-      if (!sub) return;
+      if (!sub) return false;
       const cutoff = now() - EMPTY_FOLDER_GRACE_MS;
       const prune = async node => {
         let hasContent = false;
@@ -377,7 +382,23 @@
         }
         return hasContent;
       };
-      await prune(sub);
+      return prune(sub);
+    }
+
+    // Renames existing sync roots so the first sync starts from an empty one.
+    async function setAsidePreviousRoots() {
+      const [tree] = await ext.bookmarks.getTree();
+      const other = pickOtherFolder(tree);
+      const previous = (other.children || []).filter(n => isFolder(n) && n.title === ROOT_TITLE);
+      for (const node of previous) await ext.bookmarks.update(node.id, { title: PREVIOUS_ROOT_TITLE });
+      return previous.map(node => node.id);
+    }
+
+    async function tidyPreviousRoots(folderIds) {
+      for (const id of folderIds) {
+        const hasContent = await cleanupEmptyFolders(id);
+        if (!hasContent) await ext.bookmarks.remove(id).catch(() => {});
+      }
     }
 
     // ------------------------------------------------------------ server calls
@@ -552,6 +573,8 @@
       }, PULL_DELAY_MS);
     }
 
+    let previousRoots = [];
+
     async function join(apiUrlRaw, code) {
       const outcome = await exclusive(async () => {
         const apiUrl = normalizeApiUrl(apiUrlRaw);
@@ -580,6 +603,7 @@
 
         await ext.storage.local.remove([...LEGACY_KEYS, KEYS.queue, KEYS.ids, KEYS.status]);
         ids = {};
+        previousRoots = await setAsidePreviousRoots();
         await saveConfig({
           api_url: apiUrl,
           token: data.token,
@@ -593,6 +617,7 @@
       });
       if (!outcome.ok) return outcome;
       const sync = await fullSync();
+      if (sync.ok) await exclusive(() => tidyPreviousRoots(previousRoots));
       connectWebSocket();
       return { ok: sync.ok, error: sync.error, stats: sync.stats };
     }

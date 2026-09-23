@@ -98,30 +98,47 @@ describe("first sync after joining", () => {
 
     assert.equal(folderPathOf(browser, "https://news.example/"), "Other bookmarks / Safari Bookmarks / Bookmarks Menu / News");
     assert.deepEqual(browser.copiesOf("https://unrelated.example/").map(c => c[0]), ["Bookmarks bar / Personal"]);
-    assert.equal(browser.copiesOf("https://deleted.example/").length, 0, "a bookmark deleted in Safari is not brought back");
-    assert.equal(server.rows.get("https://deleted.example/").removed, true);
-    assert.equal(browser.findFolder(oldFav, "Dev"), null, "emptied folders are cleaned up");
-    assert.equal(browser.findFolder(oldRoot, "Old"), null);
+    // The old root is set aside: what Safari does not have stays there for
+    // review and is not uploaded back into Safari.
+    assert.equal(browser.node(oldRoot).title, "Safari Bookmarks (before sync v2)");
+    assert.deepEqual(browser.copiesOf("https://deleted.example/").map(c => c[0]), ["Other bookmarks / Safari Bookmarks (before sync v2) / Old"]);
+    assert.equal(server.rows.get("https://deleted.example/").removed, true, "still deleted on the server");
+    assert.equal(browser.findFolder(oldFav, "Dev"), null, "emptied folders inside it are cleaned up");
 
     assert.deepEqual(t.queue(), [], "our own writes are not queued as user changes");
     assert.equal(browser.store[KEYS.config].cursor, server.seq);
   });
 
-  it("uploads bookmarks the user already keeps in the root", async () => {
+  it("keeps an earlier root for review and uploads what the user moves into the new one", async () => {
     const { browser, server, core } = t;
     const root = browser.seedFolder(browser.ids.other, "Safari Bookmarks");
     const work = browser.seedFolder(root, "Work");
-    browser.seedBookmark(work, "Wiki", "https://wiki.example/");
+    const wiki = browser.seedBookmark(work, "Wiki", "https://wiki.example/");
     const result = await core.join(API, "GOOD-CODE");
     assert.equal(result.ok, true, result.error);
+    assert.equal(server.rows.has("https://wiki.example/"), false, "not uploaded on its own");
+
+    t.advance(60_000);
+    await browser.ext.bookmarks.move(wiki, { parentId: t.rootId() });
+    await t.settle();
     assert.deepEqual(server.rows.get("https://wiki.example/"), {
       url: "https://wiki.example/",
       title: "Wiki",
-      folderPath: ["Work"],
+      folderPath: [],
       owner: "browser",
       removed: false,
       seq: 1,
     });
+  });
+
+  it("removes the set-aside root when nothing is left in it", async () => {
+    const { browser, server, core } = t;
+    const root = browser.seedFolder(browser.ids.other, "Safari Bookmarks");
+    browser.seedBookmark(browser.seedFolder(root, "Favorites"), "GitHub", "https://github.com/");
+    server.safariSnapshot([{ url: "https://github.com/", title: "GitHub", folderPath: ["Favorites"] }]);
+    assert.equal((await core.join(API, "GOOD-CODE")).ok, true);
+    assert.equal(browser.node(root), null);
+    assert.equal(folderPathOf(browser, "https://github.com/"), "Other bookmarks / Safari Bookmarks / Favorites");
   });
 
   it("reports a bad pairing code without touching anything", async () => {
