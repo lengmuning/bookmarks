@@ -1,18 +1,37 @@
 {
   "manifest_version": 3,
   "name": "Safari Bookmarks Sync",
-  "version": "1.1.0",
-  "description": "Sync Safari bookmarks across browsers via Cloudflare",
+  "version": "2.0.0",
+  "description": "Keeps your bookmarks in Safari's folders, synced through your own Cloudflare Worker.",
   "browser_specific_settings": {
     "gecko": {
       "id": "safari-bookmarks-sync@example.com",
-      "strict_min_version": "115.0"
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": [
+          "authenticationInfo",
+          "bookmarksInfo"
+        ]
+      }
     }
   },
-  "permissions": ["bookmarks", "storage", "alarms"],
-  "host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "permissions": [
+    "bookmarks",
+    "storage",
+    "unlimitedStorage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
   "background": {
-    "scripts": ["lib/canonical.js", "background.js"]
+    "scripts": [
+      "lib/canonical.js",
+      "lib/sync-core.js",
+      "background.js"
+    ]
   },
   "action": {
     "default_popup": "popup/popup.html",

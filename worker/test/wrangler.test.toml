@@ -1,0 +1,21 @@
+# Local-only configuration for the integration tests (Miniflare). The secrets
+# below are test values.
+name = "bookmarks-test"
+main = "../src/index.ts"
+compatibility_date = "2025-05-12"
+
+[[durable_objects.bindings]]
+name = "SYNC_GROUP"
+class_name = "SyncGroup"
+
+[[durable_objects.bindings]]
+name = "REGISTRY"
+class_name = "Registry"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = [ "SyncGroup", "Registry" ]
+
+[vars]
+ACCESS_KEY = "test-master-access-key"
+ADMIN_KEY = "test-admin-key-with-enough-length"

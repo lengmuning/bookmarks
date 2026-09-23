@@ -2,25 +2,34 @@ name = "bookmarks"
 main = "src/index.ts"
 compatibility_date = "2025-05-12"
 
-# Cloudflare Dashboard/Workers bindings must use these exact variable names.
-# Runtime variables/secrets are not required for this project.
+# Secrets are not stored here; set them with `npx wrangler secret put`:
+#   ACCESS_KEY  your own access key
+#   ADMIN_KEY   optional, enables /v2/admin to issue keys for other users
 
+# One SQLite Durable Object per sync group.
 [[durable_objects.bindings]]
-name = "SYNC_CHANNEL"
-class_name = "SyncChannel"
+name = "SYNC_GROUP"
+class_name = "SyncGroup"
 
+# Global registry: access keys, pairing codes, rate limits.
+[[durable_objects.bindings]]
+name = "REGISTRY"
+class_name = "Registry"
+
+# Durable Object migrations run in order and must never be edited once
+# deployed. v1 belonged to the first version of this Worker; v3 removes its
+# class.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = [ "SyncChannel" ]
 
-[[d1_databases]]
-binding = "DB"
-database_name = "bookmarks-db"
-database_id = "fa4874a5-b4fd-45bd-b85d-de161c06ed0c"
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = [ "SyncGroup", "Registry" ]
 
-[[kv_namespaces]]
-binding = "BOOKMARKS_KV"
-id = "e95f409591ab4011bcf8401fb243ccbe"
+[[migrations]]
+tag = "v3"
+deleted_classes = [ "SyncChannel" ]
 
 [observability]
 enabled = true

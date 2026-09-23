@@ -1,399 +1,153 @@
 # Safari Bookmarks Sync
 
-把 Safari 书签同步到 Firefox / Chrome，并保留 Safari 里的分类文件夹和文件夹名称。后端运行在 Cloudflare Worker，数据存储使用 Cloudflare D1，配对码使用 KV，实时推送使用 Durable Object WebSocket。
+把 Safari 书签同步到 Chrome 和 Firefox，一切以 Safari 的分类为准。服务端是你自己部署的 Cloudflare Worker，每个同步组的数据存在独立的 SQLite Durable Object 里。
 
-> 当前项目仍处于测试阶段，适合研究和小范围自测。写入浏览器书签前建议先备份 Safari 书签。
+> 写入书签前会自动备份（Mac 端备份 `Bookmarks.plist`，浏览器端首次连接前备份整个书签树），但仍建议先自行备份一次 Safari 书签。
 
-## 当前能力
+## 工作方式
 
-- 支持测试版双向同步：Safari 可以同步到 Firefox / Chrome，Firefox / Chrome 在 `Safari Bookmarks` 目录内的新增或修改也可以回传到 Safari。
-- Safari macOS App 读取 `/Users/<name>/Library/Safari/Bookmarks.plist`，上传到 Worker。
-- Firefox / Chrome 在"其他书签"下创建 `Safari Bookmarks` 根目录，并按 Safari 的 `Favorites/分类文件夹/子文件夹` 结构创建书签。
-- Firefox / Chrome 在 `Safari Bookmarks` 根目录内新增、修改、移动、删除书签时，会把变更上传到 Worker。
-- Safari macOS App 支持 `Check Now`、`Auto Check` 和 `Pull Remote Changes`。
-- `Auto Check` 每 5 分钟检查远端是否有 Safari 缺失的书签，但不会自动写入 Safari。
-- `Pull Remote Changes` 手动把远端新增书签合并回 Safari（写入前会检测 Safari 是否运行）。
+- **以 Safari 为准。** 书签在哪个文件夹、叫什么名字，都以 Safari 为准。浏览器里已经存在的同网址书签，不管放在哪里，都会被移动到 Safari 对应的分类里，不会重复新建。浏览器里的同步位置是 `其他书签 / Safari Bookmarks / <Safari 的文件夹>`。
+- **一个 Access Key 就是一个用户，对应一个同步组（Pair ID）。** Mac 用 Access Key 连接；Chrome 和 Firefox 用 Mac App 生成的一次性配对码加入同一个组。同一个 key 以后再连接（换 Mac、重装）会回到原来的组，不会生成新的 Pair ID。
+- **在浏览器里新增的书签会同步回 Safari。** 在 Chrome/Firefox 的 `Safari Bookmarks` 文件夹里新增的书签，会在 Safari 退出后写入 Safari。
+- **删除要在 Safari 里做。** 在 Safari 删除的书签，各浏览器会跟着删除。在浏览器里移动、改名或删除 Safari 的书签，会被放回原位。
+- **大批量删除需要确认。** 一次消失的书签超过 20 条且超过 10% 时，Mac App 会先请你确认，再同步删除到其他浏览器。这是为了防止文件异常时误删。
+- **同一网址在数据库里只有一行。** 每个同步组里，一个网址只有一条记录，移动或改名只更新这一行。删除记录保留 90 天后自动清理。不同用户的数据互相隔离，不共用记录。
 
-## 1.1 版本架构升级
-
-> 如果你在 1.0.x 版本部署过，请按"迁移"章节先升级数据模型。
-
-- **URL 作为主键**：服务端按 `(pair_id, canonical_url)` 唯一识别一条书签，不再依赖各浏览器的本地 ID。一份书签在 D1 里只占一行，无论哪台设备来更新它。
-- **写入幂等**：sync 走 `INSERT ... ON CONFLICT DO UPDATE`，重复事件不会撑大数据库。
-- **多租户隔离**：不同 `pair_id` 完全独立，同一个 URL 在 A、B 两个同步组里是两条完全独立的记录。
-- **配对码一次性**：成功 `join` 后立即作废，并附带 IP 失败计数 + 限流。
-- **Bearer 鉴权**：所有 HTTP 请求改用 `Authorization: Bearer <device_token>`（WebSocket 仍走 query 字符串）。
-- **CORS 收紧**：默认只接受 `chrome-extension://*`、`moz-extension://*`、`safari-web-extension://*` 来源。
-- **服务端时间戳**：客户端不再自己取 `Date.now()` 写入 `last_sync`，使用响应里的 `server_now`，避免设备时钟漂移导致漏事件。
-- **同名文件夹定位**：客户端用 `getChildren(parentId)` 找子文件夹，不再用全局 `search({title})`，避免把书签放进错误的同名目录。
-- **跨目录误删修复**：本地 `Safari Bookmarks` 子树外的同 URL 书签不再受同步影响。
-- **URL 改动检测**：浏览器内改 URL 会发"remove(old) + create(new)"两条事件，远端不会留下孤儿。
-- **Safari 写入安全**：`Pull Remote Changes` 写入 `Bookmarks.plist` 前检测 Safari 是否运行，未关闭时拒绝写入；使用 `NSFileCoordinator` 协调写入并保留备份。
-
-## 架构
+完整规则见 [docs/SYNC-V2.md](docs/SYNC-V2.md)。
 
 ```text
-Safari macOS App
-  ├─ 读取/写入 Bookmarks.plist
-  ├─ 上传 Safari 书签（canonical URL）
-  └─ 手动拉取远端新增
-        │
-        ▼
-Cloudflare Worker
-  ├─ D1: pairs / devices / bookmark_state
-  ├─ KV: 6 位配对码 + 限流计数
-  └─ Durable Object: WebSocket 广播（每条带 server_now）
-        ▲
-        │
-Chrome Extension / Firefox Extension
-  ├─ 接收远端变化（按 URL 去重 + 同名文件夹精确定位）
-  ├─ 创建 Safari Bookmarks 目录树
-  └─ 上传本地 Safari Bookmarks 目录内的变化
+Mac 菜单栏 App (AppKit)                 Chrome / Firefox 扩展
+  读取并写回 Bookmarks.plist              按 Safari 的分类放置书签
+  上传 Safari 快照 / 导入浏览器新增        上传 Safari Bookmarks 文件夹里的改动
+            │                                        │
+            └──────────────► Cloudflare Worker ◄──────┘
+                              /v2 API
+                              SyncGroup Durable Object：每个组一个 SQLite
+                              Registry Durable Object：Access Key、配对码、限流
 ```
 
-## Cloudflare 部署
+## 目录
 
-### 1. 安装依赖
+| 目录 | 内容 |
+|---|---|
+| `worker/` | Cloudflare Worker，代码在 `src/v2` |
+| `extensions-shared/` | 两个浏览器扩展共用的同步引擎、弹窗和测试（改这里，再运行 `scripts/sync-extensions.sh`） |
+| `chrome-extension/`, `firefox-extension/` | 扩展本体，`lib/` 和 `popup/` 由脚本从 `extensions-shared/` 复制 |
+| `macos-app/` | Mac 菜单栏 App，Xcode 工程由 `project.yml` 用 XcodeGen 生成 |
+| `docs/SYNC-V2.md` | 同步协议与规则 |
+
+## 部署 Worker
+
+需要 Node.js 22 和一个 Cloudflare 账号。
 
 ```bash
 cd worker
 npm install
 ```
 
-### 2. 创建 D1 数据库
+**配置文件。** `worker/wrangler.toml` 已经在仓库里，只有 Worker 名称和两个 Durable Object 绑定，没有任何和账号相关的 ID，不用修改。所有数据都存在 Durable Object 里，不需要 D1 或 KV。
+
+**设置密钥。** 至少设置一个。两个都不设置时，任何人都不能创建同步组。
 
 ```bash
-npx wrangler d1 create bookmarks-db
+openssl rand -hex 24                   # 生成一个随机密钥
+npx wrangler secret put ACCESS_KEY     # 你自己的 Access Key
+npx wrangler secret put ADMIN_KEY      # 可选：用来给其他用户发 Access Key
 ```
 
-### 3. 创建 KV 命名空间
-
-```bash
-npx wrangler kv:namespace create BOOKMARKS_KV
-```
-
-### 4. 复制并填写 `wrangler.toml`
-
-```bash
-cp wrangler.toml.example wrangler.toml
-```
-
-把上面两步输出里的 `database_id` 和 KV `id` 填进去：
-
-```toml
-[[d1_databases]]
-binding = "DB"
-database_name = "bookmarks-db"
-database_id = "替换成 Cloudflare 生成的 D1 database_id"
-
-[[kv_namespaces]]
-binding = "BOOKMARKS_KV"
-id = "替换成 Cloudflare 生成的 KV namespace id"
-```
-
-注意：
-
-- `binding = "DB"`、`binding = "BOOKMARKS_KV"`、`name = "SYNC_CHANNEL"` 不能改。
-- `wrangler.toml` 已加入 `.gitignore`，请勿将真实 ID 提交到版本库。
-
-### 5. 初始化 D1 表
-
-全新部署一次性跑完：
-
-```bash
-npx wrangler d1 execute bookmarks-db --file=migrations/001_schema.sql
-npx wrangler d1 execute bookmarks-db --file=migrations/004_canonical_state.sql
-```
-
-注意：
-
-- `001` 创建 `pairs` / `devices` / `bookmarks`（旧事件流表，保留兼容审计）。
-- `004` 创建 `bookmark_state`（当前数据真相）。
-- 如果你是从 1.0.x 升级，旧库可能缺少 `devices.token_hash` 或 `bookmarks.folder_path`，再按需执行：
-
-```bash
-npx wrangler d1 execute bookmarks-db --file=migrations/002_device_tokens.sql
-npx wrangler d1 execute bookmarks-db --file=migrations/003_folder_paths.sql
-npx wrangler d1 execute bookmarks-db --file=migrations/004_canonical_state.sql
-```
-
-> 1.0.x 升级提示：升级后 `bookmark_state` 是空的，已有数据保留在旧 `bookmarks` 表里但不会再被读取。让任一已配对的客户端点一次 "Sync Now"，它会用 canonical URL 重新写入 `bookmark_state`，整个同步组即完成迁移。
-
-### 6. 部署 Worker
+**部署。** Durable Object 的迁移会随部署自动执行：
 
 ```bash
 npx wrangler deploy
+curl https://<你的 Worker 地址>/v2/health
 ```
 
-部署完成后访问 Worker 根路径：
+### 给其他用户发 Access Key（可选，需要 ADMIN_KEY）
 
-```text
-https://bookmarks.your-domain.workers.dev/
-```
-
-应该返回类似：
-
-```json
-{
-  "name": "Safari Bookmarks Sync",
-  "status": "ok",
-  "endpoints": ["/health", "/api/pair/generate", ...]
-}
-```
-
-### 7. 类型检查（可选）
+每个 key 对应一个用户和一个同步组。吊销 key 会停用这个组，它的所有设备会立即停止同步。
 
 ```bash
-npm run typecheck
+W=https://<你的 Worker 地址>; A="Authorization: Bearer <ADMIN_KEY>"
+
+# 发一个 key（max_bookmarks 可选，默认 50000）
+curl -X POST $W/v2/admin/keys -H "$A" -H "Content-Type: application/json" -d '{"label":"朋友A","max_bookmarks":5000}'
+
+# 列出所有 key 和它们的同步组
+curl $W/v2/admin/keys -H "$A"
+
+# 查看某个组的用量、设备
+curl $W/v2/admin/groups/<pair_id> -H "$A"
+
+# 吊销 key（同时停用它的组）
+curl -X DELETE $W/v2/admin/keys/<key_id> -H "$A"
+
+# 只停用某个组 / 删除某个组的全部数据
+curl -X POST $W/v2/admin/groups/<pair_id>/disable -H "$A"
+curl -X DELETE $W/v2/admin/groups/<pair_id> -H "$A"
 ```
 
-## 数据模型
+## 安装与使用
 
-### `pairs`
+### Mac App
 
-| 字段 | 说明 |
-|---|---|
-| `id` | 同步组 UUID |
-| `code_hash` | 配对码的 SHA-256 |
-| `created_at` | 创建时间戳 |
+1. 打开 `dist/Safari-Bookmarks-Sync-2.0.0.dmg`，把 App 拖进"应用程序"。App 用开发者证书签名但没有公证，第一次打开需要在 Finder 里右键点击 App，选"打开"。
+2. App 常驻在菜单栏，第一次打开会弹出设置窗口。填入 Worker 地址和你的 Access Key，点"Connect"。
+3. 接着会弹出一个已经定位在 Safari 文件夹的选择框，点"Allow Access"。macOS 把 `~/Library/Safari` 列为受保护目录，任何 App 都不能自己读取，所以这一步授权是必需的，只需做一次。
+4. 设置窗口会显示一个配对码（例如 `K7PM-3QXD`，30 分钟内有效、只能用一次），拿去给 Chrome 或 Firefox 用。需要时可以点"New Pairing Code"重新生成。
 
-### `devices`
+之后 App 会自动同步：
+- `Bookmarks.plist` 变化时（每 15 秒检查一次）；
+- Safari 退出时；
+- 其他浏览器有改动时（通过 WebSocket 通知）；
+- 以及每 10 分钟一次。
 
-| 字段 | 说明 |
-|---|---|
-| `id` | 设备 UUID |
-| `pair_id` | 所属同步组 |
-| `browser` | `safari` / `chrome` / `firefox` |
-| `name` | 可选的设备名 |
-| `token_hash` | 设备 token 的 SHA-256 |
-| `created_at` | 注册时间戳 |
+菜单栏会显示状态、等待写入 Safari 的书签数量，以及需要你确认的删除。设置窗口里可以查看和移除设备，也可以设置开机自动启动。
 
-### `bookmark_state`（1.1 引入，主表）
-
-| 字段 | 说明 |
-|---|---|
-| `pair_id` | 租户标识 |
-| `url` | **canonical URL（主键的第二段）** |
-| `title` | 当前标题 |
-| `folder_path` | JSON 数组，例如 `["Favorites","科技新闻"]` |
-| `idx` | 同级顺序 |
-| `removed` | tombstone：1=已删除 |
-| `last_actor` | 最后修改它的 device_id |
-| `created_at` | 首次插入时间 |
-| `updated_at` | 最近一次写入时间，作为 `since` 查询和 last-write-wins 的依据 |
-
-**主键 = `(pair_id, url)`**：URL 在同一个 pair 内唯一，**不是全局唯一**。两个不同的 pair 即使都收藏了 `https://github.com`，也是两条独立行。
-
-## 浏览器端安装
-
-### Safari macOS App
-
-Safari 端在 [safari-macos/App](safari-macos/App)。
-
-用 Xcode 打开：
-
-```bash
-open "safari-macos/App/Safari Bookmarks Sync.xcodeproj"
-```
-
-选择 `Safari Bookmarks Sync (macOS)` scheme，Build and Run。
-
-然后到 Safari：
-
-```text
-Safari -> Settings -> Extensions
-```
-
-启用 `Safari Bookmarks Sync` 扩展。
-
-如果要重新打包测试版：
-
-```bash
-xcodebuild \
-  -project "safari-macos/App/Safari Bookmarks Sync.xcodeproj" \
-  -scheme "Safari Bookmarks Sync (macOS)" \
-  -configuration Release \
-  -derivedDataPath "safari-macos/App/build/DerivedData" \
-  CODE_SIGN_STYLE=Manual \
-  CODE_SIGN_IDENTITY=- \
-  DEVELOPMENT_TEAM= \
-  AD_HOC_CODE_SIGNING_ALLOWED=YES \
-  build
-```
+写入 Safari 书签的保护措施：
+- 只在 Safari 没有运行时写入。
+- 写入前先把原文件备份到 App 自己的目录，最多保留最近 20 份。
+- 写入后重新读取校验，失败就恢复原文件。
 
 ### Chrome
 
-1. 打开 `chrome://extensions`。
-2. 开启 `Developer mode`。
-3. 点击 `Load unpacked`。
-4. 选择 [chrome-extension](chrome-extension)。
+1. 打开 `chrome://extensions`，开启"开发者模式"，点"加载已解压的扩展程序"，选 `chrome-extension/` 目录。上架 Chrome 应用商店时用 `dist/safari-bookmarks-sync-chrome-2.0.0.zip`。需要 Chrome 116 或更新版本。
+2. 点扩展图标，填入 Worker 地址和配对码，点"Connect"。
+3. 连接前会先备份整个书签树，弹窗里可以随时下载这份备份。
 
 ### Firefox
 
-1. 打开 `about:debugging#/runtime/this-firefox`。
-2. 点击 `Load Temporary Add-on`。
-3. 选择 [firefox-extension/manifest.json](firefox-extension/manifest.json)。
+1. 打开 `about:debugging#/runtime/this-firefox`，点"临时载入附加组件"，选 `firefox-extension/manifest.json`。上架 addons.mozilla.org 时用 `dist/safari-bookmarks-sync-firefox-2.0.0.zip`。
+2. 使用方法同 Chrome。
 
-临时扩展在 Firefox 重启后会失效，需要重新加载。正式分发需要走 Firefox Add-ons 签名流程。
+## 从 1.x 升级
 
-## 使用流程
+新版已经删除旧版 v1 接口。部署新 Worker 后，没有升级的旧 Mac App、Safari 扩展和浏览器扩展都会停止同步，所以请把各端一起升级。
 
-### 首次配对
+1. **Worker**：部署新版。部署时会自动删除旧版的 `SyncChannel` Durable Object，它只负责实时通知，不保存书签。旧版的书签数据在 D1 数据库 `bookmarks-db` 和 KV 命名空间 `BOOKMARKS_KV` 里，新版不再读取，也不会迁移（各端重新连接后会从 Safari 重新上传）。确认新版工作正常后，可以在 Cloudflare 控制台里手动删除这两个资源。
+2. **Mac**：新 App 的 Bundle ID 变了（`com.lengmuning.bookmarks-sync`），不会读取旧 App 的设置，需要在新 App 里重新连接。确认新 App 工作正常后，删除旧的 "Safari Bookmarks Sync" App，旧的 Safari 扩展会随之消失。
+3. **浏览器扩展**：升级到 2.0.0 后，弹窗会提示用 Mac App 生成的新配对码重新连接。连接时，旧的 `Safari Bookmarks` 文件夹会被改名为 `Safari Bookmarks (before sync v2)`，然后新建一个干净的同步文件夹：
+   - Safari 里有的书签会被移到新文件夹；
+   - 旧文件夹最后只剩 Safari 里没有的书签。旧版从不同步删除操作，所以这些多半是早已在 Safari 删掉的，App 不会上传它们，留给你检查。想保留的，拖进新的 `Safari Bookmarks` 文件夹即可；
+   - 旧文件夹如果被清空了，会自动删除。
 
-1. 打开 macOS App。
-2. 填入 Worker URL，例如 `https://bookmarks.example.com/`。
-3. 点击 `Generate Pairing Code` 生成 6 位配对码（1 小时内有效，**且只能使用一次**）。
-4. 在 Firefox 或 Chrome 扩展里填入同一个 Worker URL 和配对码。
-5. 点击 `Connect`。
-6. 回到 macOS App，点击 `Sync Now` 上传 Safari 书签。
+## 开发与测试
 
-### Safari -> Firefox / Chrome
-
-1. macOS App 点击 `Sync Now`。
-2. Firefox / Chrome 扩展会通过 WebSocket 接收变化。
-3. 书签会写入：
-
-```text
-其他书签 / Safari Bookmarks / Favorites / Safari 原分类文件夹
-```
-
-如果没有实时出现，点击扩展里的 `Sync Now` 手动拉取。
-
-### Firefox / Chrome -> Safari
-
-1. 在 Firefox / Chrome 的 `Safari Bookmarks` 目录内新增或修改书签。
-2. 扩展会把变化上传到 Worker。
-3. **退出 Safari 后**，macOS App 点击 `Check Now` 查看是否有远端新增。
-4. 点击 `Pull Remote Changes` 合并到 Safari。
-
-> macOS App 现在会拒绝在 Safari 运行时写入 `Bookmarks.plist`。
-
-### 自动检查
-
-macOS App 里的 `Auto Check` 会每 5 分钟检查一次远端变化。它只做检查和提示，不会自动写入 Safari。真正写入仍需点击 `Pull Remote Changes`。
-
-## Safari 权限说明
-
-macOS App 需要访问：
-
-```text
-/Users/<name>/Library/Safari/Bookmarks.plist
-```
-
-通常不需要完整磁盘访问权限。更推荐：
-
-1. 点击 App 里的 `Choose File`。
-2. 手动选择 `/Users/<name>/Library/Safari/Bookmarks.plist`。
-3. App 通过 sandbox 的 user-selected read-write 权限获得访问能力。
-
-如果你替换了新版 App，需要重新点一次 `Choose File` 授权。当前工程已设置：
-
-```text
-com.apple.security.files.user-selected.read-write
-```
-
-## 安全说明
-
-- **配对码一次性 + 限流**：单 IP 5 次失败后 1 小时禁止 join；成功一次后配对码立即失效。
-- **device_token 仅在配对时返回一次**：失去 token 必须 unpair → 重新配对。
-- **CORS 默认只信任浏览器扩展来源**：网页 JS 无法跨域调用 Worker API。
-- **租户隔离**：所有 SQL 都强制带 `pair_id` 过滤；不同 pair 之间数据物理上同表，逻辑上完全独立。
-- **常量时间 token 比较**：避免毫秒级时序攻击。
-- **`wrangler.toml` 不入库**：仓库只包含占位符的 `wrangler.toml.example`。
-
-## API
-
-| Method | Path | 鉴权 | 说明 |
-|---|---|---|---|
-| `GET` | `/` | 无 | Worker 状态 |
-| `GET` | `/health` | 无 | 健康检查（含 `server_now`） |
-| `POST` | `/api/pair/generate` | 无 | 生成 6 位配对码 |
-| `POST` | `/api/pair/join` | 无 | 使用配对码加入同步组（一次性） |
-| `GET` | `/api/pair/info?pair_id=X` | 无 | 查看同步组设备 |
-| `POST` | `/api/sync` | Bearer | 上传书签变更（UPSERT） |
-| `GET` | `/api/bookmarks?pair_id=X&device_id=X` | Bearer | 获取当前书签快照 |
-| `GET` | `/api/bookmarks/since?pair_id=X&device_id=X&since=TS` | Bearer | 获取增量变化（按 `updated_at`） |
-| `GET` | `/ws?pair_id=X&device_id=X&device_token=X&browser=X` | query token | WebSocket 实时连接 |
-
-所有响应都带 `server_now` 字段，客户端应用它来更新本地的 `last_sync`。
-
-## 项目结构
-
-```text
-.
-├── worker/                 Cloudflare Worker
-│   ├── src/api/            pair / sync / bookmarks API
-│   ├── src/durable/        Durable Object WebSocket hub
-│   ├── src/utils/          canonical URL、鉴权、限流
-│   ├── migrations/         D1 SQL migrations
-│   └── wrangler.toml.example
-├── safari-macos/App/       macOS App + Safari WebExtension Xcode project
-├── chrome-extension/       Chrome MV3 extension
-│   └── lib/canonical.js    Canonical URL 共享实现
-├── firefox-extension/      Firefox extension
-│   └── lib/canonical.js
-└── README.md
-```
-
-## 常见问题
-
-### Worker 页面返回 Not Found
-
-确认浏览器扩展里填的是 Worker 根 URL，例如 `https://bookmarks.example.com/`。
-
-### D1 报 no such table: pairs / bookmark_state
-
-依次执行：
+需要 Node.js 22、Xcode 26、XcodeGen（`brew install xcodegen`）。
 
 ```bash
-cd worker
-npx wrangler d1 execute bookmarks-db --file=migrations/001_schema.sql
-npx wrangler d1 execute bookmarks-db --file=migrations/004_canonical_state.sql
+scripts/check.sh                   # 所有单元测试和检查（Worker、扩展、Mac App）
+scripts/e2e.sh                     # 本地启动 Worker（wrangler dev，不连 Cloudflare），浏览器引擎和 Mac 同步引擎都对它跑一遍完整流程
+scripts/sync-extensions.sh         # 修改 extensions-shared/ 之后复制到两个扩展
+scripts/package-extensions.sh      # 打包两个扩展的 zip 到 dist/
+macos-app/scripts/build-dmg.sh     # Release 构建并打包 DMG 到 dist/
+macos-app/scripts/generate.sh      # 生成 Xcode 工程后可以用 Xcode 打开 macos-app/BookmarksSync.xcodeproj
 ```
 
-### Safari 提示 "Safari is running"
+Mac App 的 Debug 版支持 `-snapshot-settings`（加 `-paired` 显示已连接的状态），会把设置窗口渲染成 PNG 保存到 App 的临时目录，用来检查排版。
 
-`Pull Remote Changes` 写入 plist 前会主动检测 Safari 是否运行。退出 Safari（⌘Q）再重试。
+## 已知限制
 
-### Safari 提示没有权限访问 Bookmarks.plist
-
-重新打开新版 App，点击 `Choose File`，手动选择 `/Users/<name>/Library/Safari/Bookmarks.plist`。
-
-### Firefox / Chrome 显示已同步但书签慢慢出现
-
-浏览器创建大量书签和目录需要时间，尤其是第一次同步 200+ 条书签时。等待一会儿或打开书签管理器观察 `Safari Bookmarks` 目录。
-
-### 配对码提示 "Pairing code not found or expired"
-
-配对码 1 小时有效，并且**只能使用一次**。如果配对失败请回到 macOS App 重新生成。
-
-### 配对码提示 "Too many attempts"
-
-同 IP 短时间内尝试错误次数过多被限流，等 1 小时或换网络。
-
-## 开发校验
-
-```bash
-# JS 语法检查
-node --check chrome-extension/background.js
-node --check chrome-extension/offscreen.js
-node --check chrome-extension/popup/popup.js
-node --check chrome-extension/lib/canonical.js
-node --check firefox-extension/background.js
-node --check firefox-extension/popup/popup.js
-node --check firefox-extension/lib/canonical.js
-node --check "safari-macos/App/Shared (App)/Resources/Script.js"
-
-# Worker 类型检查
-cd worker && npm install && npm run typecheck
-```
-
-macOS App 构建：
-
-```bash
-xcodebuild \
-  -project "safari-macos/App/Safari Bookmarks Sync.xcodeproj" \
-  -scheme "Safari Bookmarks Sync (macOS)" \
-  -configuration Debug \
-  build
-```
+- **iCloud 不会上传 App 写入的书签。** App 直接修改 `Bookmarks.plist`，Safari 并不知道书签变了，所以 iCloud 不会把从其他浏览器同步来的书签上传；iCloud 还可能用云端版本覆盖掉它们。App 会检测这种情况，把被覆盖掉的书签标记为"被 Safari 丢弃"并在菜单里提示，不会把它当成删除去同步。macOS 没有公开的接口能让 App 通过 Safari 自身写入书签（Safari 扩展也没有书签 API）。
+- **没有公证。** 公证需要付费的 Apple Developer Program 会员；在此之前，第一次打开需要右键选"打开"。
+- **浏览器里的书签顺序不按 Safari 排。** 书签会放进正确的文件夹，但在文件夹内的顺序不跟 Safari 保持一致。
+- **只支持桌面版 Firefox。** Android 版 Firefox 没有书签 API，所以扩展没有声明支持 Android。

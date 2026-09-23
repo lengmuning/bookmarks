@@ -1,5 +1,7 @@
-// Canonical URL normalization shared between Worker and clients.
-// Keep this logic identical across all platforms: Chrome, Firefox, Safari macOS.
+// Canonical URL used as bookmark identity. Must match
+// extensions-shared/canonical.js; both are checked against
+// extensions-shared/canonical-vectors.json. The macOS app does not
+// canonicalize: it uses the canonical_map the server returns.
 //
 // Rules (intentionally minimal — only fix differences that produce false-duplicate writes):
 //   - lowercase hostname
@@ -40,33 +42,4 @@ export function canonicalUrl(raw: string | null | undefined): string | null {
   }
 
   return parsed.toString();
-}
-
-export function normalizeFolderPath(value: unknown): string[] {
-  if (!value) return [];
-  let parts: unknown[] = [];
-
-  if (Array.isArray(value)) {
-    parts = value;
-  } else if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      if (Array.isArray(parsed)) parts = parsed;
-    } catch {
-      return [];
-    }
-  } else {
-    return [];
-  }
-
-  const result: string[] = [];
-  for (const part of parts) {
-    if (typeof part !== "string") continue;
-    const trimmed = part.trim();
-    if (!trimmed) continue;
-    if (trimmed === "Safari Bookmarks") continue;
-    if (result[result.length - 1] === trimmed) continue;
-    result.push(trimmed);
-  }
-  return result;
 }
