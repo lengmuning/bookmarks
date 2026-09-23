@@ -1,0 +1,34 @@
+# Local-only configuration for the integration tests. Bindings are simulated
+# by Miniflare; the IDs below are placeholders and never reach Cloudflare.
+name = "bookmarks-test"
+main = "../src/index.ts"
+compatibility_date = "2025-05-12"
+
+[[durable_objects.bindings]]
+name = "SYNC_CHANNEL"
+class_name = "SyncChannel"
+
+[[durable_objects.bindings]]
+name = "SYNC_GROUP"
+class_name = "SyncGroup"
+
+[[durable_objects.bindings]]
+name = "REGISTRY"
+class_name = "Registry"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = [ "SyncChannel" ]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = [ "SyncGroup", "Registry" ]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bookmarks-test"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[[kv_namespaces]]
+binding = "BOOKMARKS_KV"
+id = "00000000000000000000000000000000"

@@ -13,6 +13,19 @@ class_name = "SyncChannel"
 tag = "v1"
 new_sqlite_classes = [ "SyncChannel" ]
 
+# v2: one SQLite Durable Object per sync group + a global registry for pairing codes
+[[durable_objects.bindings]]
+name = "SYNC_GROUP"
+class_name = "SyncGroup"
+
+[[durable_objects.bindings]]
+name = "REGISTRY"
+class_name = "Registry"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = [ "SyncGroup", "Registry" ]
+
 [[d1_databases]]
 # Binding variable name used by code: env.DB
 binding = "DB"
@@ -27,7 +40,3 @@ id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
 [observability]
 enabled = true
 
-# Optional: restrict CORS origins. Leave blank to allow only browser extension schemes.
-# Example: "https://myapp.example.com,https://other.example.com"
-# [vars]
-# ALLOWED_WEB_ORIGINS = ""

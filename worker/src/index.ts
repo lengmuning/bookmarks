@@ -3,38 +3,21 @@ import { handleGeneratePair, handleJoinPair, handleGetPairInfo } from "./api/pai
 import { handleSync } from "./api/sync";
 import { handleGetBookmarks, handleGetBookmarksSince } from "./api/bookmarks";
 import { validateRequest } from "./utils/auth";
+import { applyCors } from "./utils/cors";
+import { handleV2 } from "./v2/router";
 
 export { SyncChannel } from "./durable/SyncChannel";
+export { SyncGroup } from "./v2/SyncGroup";
+export { Registry } from "./v2/Registry";
 
+// v1 (/api/*, /ws) is kept unchanged for clients installed before v2.
 const router = AutoRouter();
 
 router.get("/", () => Response.json({
   name: "Safari Bookmarks Sync",
   status: "ok",
-  endpoints: ["/health", "/api/pair/generate", "/api/pair/join", "/api/sync", "/api/bookmarks", "/api/bookmarks/since", "/ws"],
+  api_versions: [1, 2],
 }));
-
-function isAllowedOrigin(origin: string | null): boolean {
-  if (!origin) return false;
-  return (
-    origin.startsWith("chrome-extension://") ||
-    origin.startsWith("moz-extension://") ||
-    origin.startsWith("safari-web-extension://")
-  );
-}
-
-function applyCors(req: Request, res: Response): Response {
-  const origin = req.headers.get("Origin");
-  if (origin && isAllowedOrigin(origin)) {
-    res.headers.set("Access-Control-Allow-Origin", origin);
-    res.headers.set("Vary", "Origin");
-    res.headers.set("Access-Control-Allow-Credentials", "false");
-  }
-  res.headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.headers.set("Access-Control-Max-Age", "86400");
-  return res;
-}
 
 function wrap(handler: (req: IRequest, env: Env) => Promise<Response>) {
   return async (req: IRequest, env: Env) =>
@@ -67,5 +50,6 @@ router.get("/ws", async (req: IRequest, env: Env) => {
 router.get("/health", () => Response.json({ status: "ok", server_now: Date.now() }));
 
 export default {
-  fetch: (req: Request, env: Env) => router.fetch(req, env),
+  fetch: (req: Request, env: Env) =>
+    new URL(req.url).pathname.startsWith("/v2/") ? handleV2(req, env) : router.fetch(req, env),
 } satisfies ExportedHandler<Env>;

@@ -1,6 +1,7 @@
 import { IRequest } from "itty-router";
 import { generatePairingCode, hashCode, newDeviceToken, newId } from "../utils/crypto";
 import { bumpRateLimit, checkRateLimit, clientKey, resetRateLimit } from "../utils/rateLimit";
+import { validateRequest } from "../utils/auth";
 
 const PAIR_CODE_TTL_SEC = 3600;
 const JOIN_RATE_LIMIT = 5;
@@ -92,14 +93,12 @@ export async function handleJoinPair(request: IRequest, env: Env): Promise<Respo
 }
 
 export async function handleGetPairInfo(request: IRequest, env: Env): Promise<Response> {
-  const pairId = (request.query as Record<string, string | undefined>).pair_id;
-  if (!pairId) {
-    return Response.json({ error: "Missing pair_id" }, { status: 400 });
-  }
+  const auth = await validateRequest(env, request, new URL(request.url));
+  if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
 
   const devices = await env.DB.prepare(
     "SELECT id, browser, name, created_at FROM devices WHERE pair_id = ?"
-  ).bind(pairId).all();
+  ).bind(auth.pairId).all();
 
-  return Response.json({ pair_id: pairId, devices: devices.results, server_now: Date.now() });
+  return Response.json({ pair_id: auth.pairId, devices: devices.results, server_now: Date.now() });
 }

@@ -1,0 +1,19 @@
+[
+  { "input": "https://Example.COM", "expected": "https://example.com/" },
+  { "input": "HTTP://EXAMPLE.com/Path", "expected": "http://example.com/Path" },
+  { "input": "https://example.com:443/a", "expected": "https://example.com/a" },
+  { "input": "http://example.com:80", "expected": "http://example.com/" },
+  { "input": "https://example.com:8443/", "expected": "https://example.com:8443/" },
+  { "input": "https://user:pass@example.com/x", "expected": "https://example.com/x" },
+  { "input": "  https://example.com/path?q=1#frag  ", "expected": "https://example.com/path?q=1#frag" },
+  { "input": "https://example.com/a/../b", "expected": "https://example.com/b" },
+  { "input": "https://example.com?x", "expected": "https://example.com/?x" },
+  { "input": "https://example.com/#", "expected": "https://example.com/#" },
+  { "input": "https://example.com/a b", "expected": "https://example.com/a%20b" },
+  { "input": "https://bücher.de/", "expected": "https://xn--bcher-kva.de/" },
+  { "input": "javascript:alert(1)", "expected": null },
+  { "input": "file:///tmp/x", "expected": null },
+  { "input": "about:blank", "expected": null },
+  { "input": "not a url", "expected": null },
+  { "input": "", "expected": null }
+]
