@@ -34,3 +34,7 @@ safari-macos/App/build/
 *.xcuserstate
 safari-macos/App/Safari Bookmarks Sync.xcodeproj/xcuserdata/
 safari-macos/App/Safari Bookmarks Sync.xcodeproj/project.xcworkspace/xcuserdata/
+
+# macOS app: the project is generated from macos-app/project.yml
+macos-app/BookmarksSync.xcodeproj/
+macos-app/build/

@@ -1,0 +1,86 @@
+# Generate the Xcode project with `xcodegen generate` (scripts/generate.sh).
+# The .xcodeproj is not committed; this file is the source of truth.
+name: BookmarksSync
+options:
+  bundleIdPrefix: com.lengmuning
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "2.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: C7LPKS46N5
+    ENABLE_HARDENED_RUNTIME: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    DEAD_CODE_STRIPPING: YES
+
+targets:
+  BookmarksSyncCore:
+    type: framework
+    platform: macOS
+    sources: [BookmarksSyncCore]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lengmuning.bookmarks-sync.core
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: Apple Development
+
+  BookmarksSync:
+    type: application
+    platform: macOS
+    sources: [BookmarksSync]
+    dependencies:
+      - target: BookmarksSyncCore
+    info:
+      path: BookmarksSync/Info.plist
+      properties:
+        CFBundleDisplayName: Safari Bookmarks Sync
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSUIElement: true
+        LSApplicationCategoryType: public.app-category.productivity
+        NSHumanReadableCopyright: Copyright © 2026 lengmuning
+    entitlements:
+      path: BookmarksSync/BookmarksSync.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.files.user-selected.read-write: true
+        com.apple.security.files.bookmarks.app-scope: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lengmuning.bookmarks-sync
+        PRODUCT_NAME: Safari Bookmarks Sync
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: Apple Development
+        COMBINE_HIDPI_IMAGES: YES
+
+  BookmarksSyncCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [BookmarksSyncCoreTests]
+    dependencies:
+      - target: BookmarksSyncCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lengmuning.bookmarks-sync.core-tests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  BookmarksSync:
+    build:
+      targets:
+        BookmarksSync: all
+    test:
+      targets: [BookmarksSyncCoreTests]
+  BookmarksSyncCore:
+    build:
+      targets:
+        BookmarksSyncCore: all
+    test:
+      targets: [BookmarksSyncCoreTests]
