@@ -9,14 +9,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p test",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
-    "test:integration": "vitest run --project integration",
-    "db:migrate": "wrangler d1 execute bookmarks-db --file=migrations/001_schema.sql",
-    "db:migrate:device-tokens": "wrangler d1 execute bookmarks-db --file=migrations/002_device_tokens.sql",
-    "db:migrate:folder-paths": "wrangler d1 execute bookmarks-db --file=migrations/003_folder_paths.sql",
-    "db:migrate:canonical-state": "wrangler d1 execute bookmarks-db --file=migrations/004_canonical_state.sql"
-  },
-  "dependencies": {
-    "itty-router": "^5.0.18"
+    "test:integration": "vitest run --project integration"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",

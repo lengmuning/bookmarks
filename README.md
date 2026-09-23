@@ -30,12 +30,11 @@ Mac 菜单栏 App (AppKit)                 Chrome / Firefox 扩展
 
 | 目录 | 内容 |
 |---|---|
-| `worker/` | Cloudflare Worker（`src/v2` 是新协议；`src/api` 是旧版 v1，只为未升级的客户端保留） |
+| `worker/` | Cloudflare Worker，代码在 `src/v2` |
 | `extensions-shared/` | 两个浏览器扩展共用的同步引擎、弹窗和测试（改这里，再运行 `scripts/sync-extensions.sh`） |
 | `chrome-extension/`, `firefox-extension/` | 扩展本体，`lib/` 和 `popup/` 由脚本从 `extensions-shared/` 复制 |
 | `macos-app/` | Mac 菜单栏 App，Xcode 工程由 `project.yml` 用 XcodeGen 生成 |
 | `docs/SYNC-V2.md` | 同步协议与规则 |
-| `safari-macos/` | 旧版 Mac App 和 Safari 扩展，确认新版可用后删除 |
 
 ## 部署 Worker
 
@@ -46,20 +45,7 @@ cd worker
 npm install
 ```
 
-**配置文件。** 如果以前部署过，本地的 `wrangler.toml` 里已经有 D1/KV 的 ID，v2 的两个 Durable Object 绑定也已经加进去了，不用再改。全新部署时：
-
-```bash
-cp wrangler.toml.example wrangler.toml
-npx wrangler d1 create bookmarks-db
-npx wrangler kv namespace create BOOKMARKS_KV
-```
-
-把输出的 `database_id` 和 KV `id` 填进 `wrangler.toml`。D1 和 KV 只有旧版 v1 接口在用，v2 的数据都在 Durable Object 里。新库执行一次：
-
-```bash
-npx wrangler d1 execute bookmarks-db --remote --file=migrations/001_schema.sql
-npx wrangler d1 execute bookmarks-db --remote --file=migrations/004_canonical_state.sql
-```
+**配置文件。** `worker/wrangler.toml` 已经在仓库里，只有 Worker 名称和两个 Durable Object 绑定，没有任何和账号相关的 ID，不用修改。所有数据都存在 Durable Object 里，不需要 D1 或 KV。
 
 **设置密钥。** 至少设置一个。两个都不设置时，任何人都不能创建同步组。
 
@@ -135,13 +121,14 @@ curl -X DELETE $W/v2/admin/groups/<pair_id> -H "$A"
 
 ## 从 1.x 升级
 
-1. **Worker**：部署新版。旧版 v1 接口继续可用，未升级的扩展仍能同步，但已经不能通过 v1 新建同步组（需要主密钥）。
+新版已经删除旧版 v1 接口。部署新 Worker 后，没有升级的旧 Mac App、Safari 扩展和浏览器扩展都会停止同步，所以请把各端一起升级。
+
+1. **Worker**：部署新版。部署时会自动删除旧版的 `SyncChannel` Durable Object，它只负责实时通知，不保存书签。旧版的书签数据在 D1 数据库 `bookmarks-db` 和 KV 命名空间 `BOOKMARKS_KV` 里，新版不再读取，也不会迁移（各端重新连接后会从 Safari 重新上传）。确认新版工作正常后，可以在 Cloudflare 控制台里手动删除这两个资源。
 2. **Mac**：新 App 的 Bundle ID 变了（`com.lengmuning.bookmarks-sync`），不会读取旧 App 的设置，需要在新 App 里重新连接。确认新 App 工作正常后，删除旧的 "Safari Bookmarks Sync" App，旧的 Safari 扩展会随之消失。
 3. **浏览器扩展**：升级到 2.0.0 后，弹窗会提示用 Mac App 生成的新配对码重新连接。连接时，旧的 `Safari Bookmarks` 文件夹会被改名为 `Safari Bookmarks (before sync v2)`，然后新建一个干净的同步文件夹：
    - Safari 里有的书签会被移到新文件夹；
    - 旧文件夹最后只剩 Safari 里没有的书签。旧版从不同步删除操作，所以这些多半是早已在 Safari 删掉的，App 不会上传它们，留给你检查。想保留的，拖进新的 `Safari Bookmarks` 文件夹即可；
    - 旧文件夹如果被清空了，会自动删除。
-4. 确认一切正常后，可以删除仓库里的 `safari-macos/` 目录。
 
 ## 开发与测试
 

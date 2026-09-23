@@ -374,11 +374,12 @@ describe("access keys", () => {
     expect((await adminCall("GET", `/v2/admin/groups/${pairId}`)).status).toBe(404);
   });
 
-  it("keeps v1 group creation closed without the master key", async () => {
+  it("answers 404 on the removed v1 API", async () => {
     const res = await exports.default.fetch(
       new Request(`${BASE}/api/pair/generate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }),
     );
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
   });
 });
 

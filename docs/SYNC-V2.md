@@ -144,8 +144,7 @@ own token so it can be removed on its own.
   `replace_safari: true`, which revokes the old one (new or reinstalled Mac).
 
 Browsers normally join with a pairing code (`POST /v2/join`), so the access key
-only has to be typed on the Mac. v1 `POST /api/pair/generate` accepts only the
-master `ACCESS_KEY`, in `X-Access-Key`.
+only has to be typed on the Mac.
 
 Groups are never merged across users: two users with the same URL each have
 their own row in their own Durable Object.

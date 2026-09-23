@@ -1,5 +1,4 @@
 # Cloudflare
-worker/wrangler.toml
 worker/.wrangler/
 worker/.dev.vars
 
@@ -11,7 +10,6 @@ npm-debug.log*
 # Build artifacts
 worker/dist/
 dist/
-safari-macos/App/build/
 
 # macOS
 .DS_Store
@@ -32,8 +30,6 @@ safari-macos/App/build/
 # Tooling local state
 .claude/
 *.xcuserstate
-safari-macos/App/Safari Bookmarks Sync.xcodeproj/xcuserdata/
-safari-macos/App/Safari Bookmarks Sync.xcodeproj/project.xcworkspace/xcuserdata/
 
 # macOS app: the project is generated from macos-app/project.yml
 macos-app/BookmarksSync.xcodeproj/

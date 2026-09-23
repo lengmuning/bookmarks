@@ -1,0 +1,35 @@
+name = "bookmarks"
+main = "src/index.ts"
+compatibility_date = "2025-05-12"
+
+# Secrets are not stored here; set them with `npx wrangler secret put`:
+#   ACCESS_KEY  your own access key
+#   ADMIN_KEY   optional, enables /v2/admin to issue keys for other users
+
+# One SQLite Durable Object per sync group.
+[[durable_objects.bindings]]
+name = "SYNC_GROUP"
+class_name = "SyncGroup"
+
+# Global registry: access keys, pairing codes, rate limits.
+[[durable_objects.bindings]]
+name = "REGISTRY"
+class_name = "Registry"
+
+# Durable Object migrations run in order and must never be edited once
+# deployed. v1 belonged to the first version of this Worker; v3 removes its
+# class.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = [ "SyncChannel" ]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = [ "SyncGroup", "Registry" ]
+
+[[migrations]]
+tag = "v3"
+deleted_classes = [ "SyncChannel" ]
+
+[observability]
+enabled = true
