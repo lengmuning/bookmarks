@@ -163,4 +163,4 @@ Mac App 的 Debug 版支持 `-snapshot-settings`（加 `-paired` 显示已连接
 - **iCloud 不会上传 App 写入的书签。** App 直接修改 `Bookmarks.plist`，Safari 并不知道书签变了，所以 iCloud 不会把从其他浏览器同步来的书签上传；iCloud 还可能用云端版本覆盖掉它们。App 会检测这种情况，把被覆盖掉的书签标记为"被 Safari 丢弃"并在菜单里提示，不会把它当成删除去同步。macOS 没有公开的接口能让 App 通过 Safari 自身写入书签（Safari 扩展也没有书签 API）。
 - **没有公证。** 公证需要付费的 Apple Developer Program 会员；在此之前，第一次打开需要右键选"打开"。
 - **浏览器里的书签顺序不按 Safari 排。** 书签会放进正确的文件夹，但在文件夹内的顺序不跟 Safari 保持一致。
-- **Firefox for Android 用不了。** Android 版 Firefox 没有书签 API，扩展在 Android 上无法工作。当前 manifest 里仍然声明了 `gecko_android`。
+- **只支持桌面版 Firefox。** Android 版 Firefox 没有书签 API，所以扩展没有声明支持 Android。
