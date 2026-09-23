@@ -1,6 +1,6 @@
 import { applyCors } from "../utils/cors";
 import { decideAccess, isAdmin } from "./access";
-import { ACCESS, LIMITS } from "./limits";
+import { LIMITS } from "./limits";
 import { formatPairingCode, normalizeDeviceName, normalizePlatform } from "./normalize";
 import type { DeviceAuth, RpcResult } from "./SyncGroup";
 import { bearerToken, isUuid, makeToken } from "./token";
@@ -73,7 +73,9 @@ export async function handleV2(request: Request, env: Env): Promise<Response> {
   }
 }
 
-async function createPair(request: Request, env: Env): Promise<Response> {
+// One access key belongs to one user and one group: the first call creates
+// the group, later calls (a reinstalled or new Mac, another browser) join it.
+async function connect(request: Request, env: Env): Promise<Response> {
   const body = await readSmallJson(request);
   const platform = normalizePlatform(body?.platform);
   if (!body || !platform) return json(400, { error: "invalid_body" });
@@ -81,32 +83,42 @@ async function createPair(request: Request, env: Env): Promise<Response> {
   const access = await decideAccess(env, body.access_key ?? request.headers.get("X-Access-Key"));
   if (access.kind === "denied") return json(access.status, { error: access.error });
 
-  const pairId = crypto.randomUUID();
-  const reserved = await registry(env).reserveGroup(pairId, access.kind === "issued" ? access.keyHash : null, clientIp(request));
-  if (!reserved.ok) {
-    return reserved.reason === "rate_limited"
+  const candidate = crypto.randomUUID();
+  const found = await registry(env).connectKey(access.kind === "issued" ? access.keyHash : null, candidate, clientIp(request));
+  if (!found.ok) {
+    return found.reason === "rate_limited"
       ? json(429, { error: "rate_limited" }, { "Retry-After": "3600" })
-      : json(403, { error: reserved.reason });
+      : json(403, { error: found.reason });
+  }
+  const name = normalizeDeviceName(body.name);
+
+  if (!found.created) {
+    const added = await group(env, found.pairId).addDevice({ platform, name, replaceSafari: body.replace_safari === true });
+    if (added.status !== 200) return fromRpc(added);
+    const device = bodyOf(added);
+    return json(200, {
+      pair_id: found.pairId,
+      device_id: String(device.device_id),
+      token: makeToken(found.pairId, String(device.device_id), String(device.secret)),
+      created: false,
+      replaced_device: device.replaced,
+      cursor: device.cursor,
+    });
   }
 
-  const init = await group(env, pairId).init({
-    pairId,
-    platform,
-    name: normalizeDeviceName(body.name),
-    maxBookmarks: reserved.maxBookmarks,
-  });
+  const init = await group(env, found.pairId).init({ pairId: found.pairId, platform, name, maxBookmarks: found.maxBookmarks });
   if (init.status !== 200) {
-    await registry(env).releaseGroup(pairId);
+    await registry(env).releaseGroup(found.pairId);
     return fromRpc(init);
   }
   const created = bodyOf(init);
   const deviceId = String(created.device_id);
-  const { code, expiresAt } = await registry(env).issueCode(pairId);
-
+  const { code, expiresAt } = await registry(env).issueCode(found.pairId);
   return json(200, {
-    pair_id: pairId,
+    pair_id: found.pairId,
     device_id: deviceId,
-    token: makeToken(pairId, deviceId, String(created.secret)),
+    token: makeToken(found.pairId, deviceId, String(created.secret)),
+    created: true,
     code: formatPairingCode(code),
     code_expires_at: expiresAt,
     cursor: 0,
@@ -146,7 +158,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   const method = request.method;
 
   if (method === "GET" && path === "/v2/health") return json(200, { status: "ok", version: 2, server_now: Date.now() });
-  if (method === "POST" && path === "/v2/pairs") return createPair(request, env);
+  if (method === "POST" && path === "/v2/connect") return connect(request, env);
   if (method === "POST" && path === "/v2/join") return joinPair(request, env);
 
   const token = bearerToken(request);
@@ -213,18 +225,14 @@ async function admin(request: Request, env: Env, url: URL): Promise<Response> {
   if (method === "POST" && path === "/v2/admin/keys") {
     const body = await readSmallJson(request);
     if (!body) return json(400, { error: "invalid_body" });
-    const maxGroups = boundedInt(body.max_groups, ACCESS.defaultMaxGroups, 1, ACCESS.maxGroupsLimit);
     const maxBookmarks = boundedInt(body.max_bookmarks, LIMITS.activeBookmarks, 1, LIMITS.activeBookmarks);
-    if (maxGroups === null || maxBookmarks === null) return json(400, { error: "invalid_limits" });
+    if (maxBookmarks === null) return json(400, { error: "invalid_limits" });
     const label = typeof body.label === "string" && body.label.trim() ? body.label.trim().slice(0, 100) : null;
-    const created = await reg.createKey({ label, maxGroups, maxBookmarks });
-    return json(200, { ...created, label, max_groups: maxGroups, max_bookmarks: maxBookmarks });
+    const created = await reg.createKey({ label, maxBookmarks });
+    return json(200, { ...created, label, max_bookmarks: maxBookmarks });
   }
 
-  if (method === "GET" && path === "/v2/admin/keys") {
-    const [keys, masterGroups] = await Promise.all([reg.listKeys(), reg.masterGroups()]);
-    return json(200, { keys, master_key_groups: masterGroups });
-  }
+  if (method === "GET" && path === "/v2/admin/keys") return json(200, await reg.listKeys());
 
   if (method === "DELETE" && path.startsWith("/v2/admin/keys/")) {
     const id = path.slice("/v2/admin/keys/".length);

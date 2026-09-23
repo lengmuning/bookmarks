@@ -32,7 +32,10 @@ interface DeviceRow {
 }
 
 const ok = (body: object): RpcResult => ({ status: 200, json: JSON.stringify(body) });
-const fail = (status: number, error: string): RpcResult => ({ status, json: JSON.stringify({ error }) });
+const fail = (status: number, error: string, extra: object = {}): RpcResult => ({
+  status,
+  json: JSON.stringify({ error, ...extra }),
+});
 const isResult = (value: unknown): value is RpcResult =>
   typeof value === "object" && value !== null && "status" in value && "json" in value;
 
@@ -184,11 +187,16 @@ export class SyncGroup extends DurableObject<Env> {
     return this.meta("disabled_at") !== null;
   }
 
-  private activeSafariDevice(): string | null {
+  private activeSafariDevice(): { id: string; name: string | null; last_seen_at: number | null } | null {
     const rows = this.sql
-      .exec("SELECT id FROM devices WHERE platform = 'safari' AND revoked_at IS NULL LIMIT 1")
+      .exec("SELECT id, name, last_seen_at FROM devices WHERE platform = 'safari' AND revoked_at IS NULL LIMIT 1")
       .toArray();
-    return rows.length ? String(rows[0].id) : null;
+    if (!rows.length) return null;
+    return {
+      id: String(rows[0].id),
+      name: rows[0].name === null ? null : String(rows[0].name),
+      last_seen_at: rows[0].last_seen_at === null ? null : Number(rows[0].last_seen_at),
+    };
   }
 
   private insertDevice(id: string, platform: Platform, name: string | null, tokenHash: string, now: number): void {
@@ -221,15 +229,27 @@ export class SyncGroup extends DurableObject<Env> {
     return ok({ device_id: deviceId, secret });
   }
 
-  async addDevice(input: { platform: Platform; name: string | null }): Promise<RpcResult> {
+  // A group has one Safari device. `replaceSafari` revokes the current one
+  // (a new or reinstalled Mac taking over); otherwise its details are returned
+  // so the app can ask the user.
+  async addDevice(input: { platform: Platform; name: string | null; replaceSafari?: boolean }): Promise<RpcResult> {
     const deviceId = crypto.randomUUID();
     const secret = randomHex(32);
     const tokenHash = await sha256Hex(secret);
     if (!this.initialized()) return fail(404, "group_not_found");
     if (this.disabled()) return fail(403, "group_disabled");
-    if (input.platform === "safari" && this.activeSafariDevice()) return fail(409, "safari_device_exists");
-    this.insertDevice(deviceId, input.platform, input.name, tokenHash, Date.now());
-    return ok({ device_id: deviceId, secret, cursor: this.store.currentSeq() });
+    const now = Date.now();
+    const current = input.platform === "safari" ? this.activeSafariDevice() : null;
+    if (current && !input.replaceSafari) return fail(409, "safari_device_exists", { device: current });
+    this.ctx.storage.transactionSync(() => {
+      if (current) {
+        this.sql.exec("UPDATE devices SET revoked_at = ? WHERE id = ?", now, current.id);
+        this.sql.exec("DELETE FROM ws_tickets WHERE device_id = ?", current.id);
+      }
+      this.insertDevice(deviceId, input.platform, input.name, tokenHash, now);
+    });
+    if (current) this.closeSockets(current.id);
+    return ok({ device_id: deviceId, secret, cursor: this.store.currentSeq(), replaced: current?.id ?? null });
   }
 
   // Returns the device, or the error to send back.

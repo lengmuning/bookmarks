@@ -2,6 +2,8 @@ import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 
 const BASE = "https://sync.test";
+const MASTER = "test-master-access-key";
+const ADMIN = "test-admin-key-with-enough-length";
 let ipCounter = 0;
 const freshIp = () => `198.51.100.${++ipCounter}`;
 
@@ -27,9 +29,18 @@ async function call(method: string, path: string, options: CallOptions = {}) {
   return { status: response.status, body: (text ? JSON.parse(text) : null) as any };
 }
 
+// Each test user gets their own access key, as the admin would issue it.
+async function newKey(label = "user", extra: Record<string, unknown> = {}) {
+  const issued = await call("POST", "/v2/admin/keys", { token: ADMIN, body: { label, ...extra } });
+  expect(issued.status).toBe(200);
+  return issued.body.key as string;
+}
+
 async function createGroup() {
-  const safari = await call("POST", "/v2/pairs", { body: { platform: "safari", name: "Test Mac", access_key: MASTER } });
+  const key = await newKey();
+  const safari = await call("POST", "/v2/connect", { body: { platform: "safari", name: "Test Mac", access_key: key } });
   expect(safari.status).toBe(200);
+  expect(safari.body.created).toBe(true);
   const chrome = await call("POST", "/v2/join", { body: { code: safari.body.code, platform: "chrome", name: "Chrome" } });
   expect(chrome.status).toBe(200);
   return { safari: safari.body.token as string, chrome: chrome.body.token as string, pairId: safari.body.pair_id as string };
@@ -37,12 +48,10 @@ async function createGroup() {
 
 const A = "https://a.example/";
 const B = "https://b.example/";
-const MASTER = "test-master-access-key";
-const ADMIN = "test-admin-key-with-enough-length";
 
 describe("pairing", () => {
   it("creates a group with a formatted single-use code", async () => {
-    const created = await call("POST", "/v2/pairs", { body: { platform: "safari", name: "Mac", access_key: MASTER } });
+    const created = await call("POST", "/v2/connect", { body: { platform: "safari", name: "Mac", access_key: await newKey() } });
     expect(created.status).toBe(200);
     expect(created.body.code).toMatch(/^[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}$/);
     expect(created.body.token).toMatch(/^v2\.[0-9a-f-]{36}\.[0-9a-f-]{36}\.[0-9a-f]{64}$/);
@@ -57,7 +66,7 @@ describe("pairing", () => {
   });
 
   it("invalidates the previous code when a new one is issued", async () => {
-    const created = await call("POST", "/v2/pairs", { body: { platform: "safari", access_key: MASTER } });
+    const created = await call("POST", "/v2/connect", { body: { platform: "safari", access_key: await newKey() } });
     const next = await call("POST", "/v2/pair-code", { token: created.body.token });
     expect(next.status).toBe(200);
     expect((await call("POST", "/v2/join", { body: { code: created.body.code, platform: "chrome" } })).status).toBe(404);
@@ -77,7 +86,7 @@ describe("pairing", () => {
       const miss = await call("POST", "/v2/join", { ip, body: { code: "2222-2222", platform: "chrome" } });
       expect(miss.status).toBe(404);
     }
-    const created = await call("POST", "/v2/pairs", { body: { platform: "safari", access_key: MASTER } });
+    const created = await call("POST", "/v2/connect", { body: { platform: "safari", access_key: await newKey() } });
     const blocked = await call("POST", "/v2/join", { ip, body: { code: created.body.code, platform: "chrome" } });
     expect(blocked.status).toBe(429);
     const other = await call("POST", "/v2/join", { body: { code: created.body.code, platform: "chrome" } });
@@ -85,7 +94,7 @@ describe("pairing", () => {
   });
 
   it("validates request bodies", async () => {
-    expect((await call("POST", "/v2/pairs", { body: { platform: "opera", access_key: MASTER } })).status).toBe(400);
+    expect((await call("POST", "/v2/connect", { body: { platform: "opera", access_key: MASTER } })).status).toBe(400);
     expect((await call("POST", "/v2/join", { body: { platform: "chrome" } })).status).toBe(400);
   });
 });
@@ -280,18 +289,20 @@ describe("access keys", () => {
     call(method, path, { token: key, body });
 
   it("requires a valid access key to create a group", async () => {
-    expect((await call("POST", "/v2/pairs", { body: { platform: "safari" } })).status).toBe(401);
-    const wrong = await call("POST", "/v2/pairs", { body: { platform: "safari", access_key: "not-the-key-at-all" } });
+    expect((await call("POST", "/v2/connect", { body: { platform: "safari" } })).status).toBe(401);
+    const wrong = await call("POST", "/v2/connect", { body: { platform: "safari", access_key: "not-the-key-at-all" } });
     expect(wrong.status).toBe(403);
     expect(wrong.body.error).toBe("invalid_access_key");
     const header = await exports.default.fetch(
-      new Request(`${BASE}/v2/pairs`, {
+      new Request(`${BASE}/v2/connect`, {
         method: "POST",
         headers: { "CF-Connecting-IP": freshIp(), "X-Access-Key": MASTER, "Content-Type": "application/json" },
         body: JSON.stringify({ platform: "safari" }),
       }),
     );
     expect(header.status).toBe(200);
+    const listed = await adminCall("GET", "/v2/admin/keys");
+    expect(listed.body.master_group.pair_id).toBe(((await header.json()) as { pair_id: string }).pair_id);
   });
 
   it("protects the admin API", async () => {
@@ -300,25 +311,44 @@ describe("access keys", () => {
     expect((await adminCall("GET", "/v2/admin/keys", undefined, MASTER)).status).toBe(401);
   });
 
-  it("issues per-user keys with a group limit and revokes them", async () => {
-    const issued = await adminCall("POST", "/v2/admin/keys", { label: "friend", max_groups: 1, max_bookmarks: 2 });
+  it("maps one access key to one group and lets a new Mac take over", async () => {
+    const key = await newKey("me");
+    const first = await call("POST", "/v2/connect", { body: { platform: "safari", name: "Old Mac", access_key: key } });
+    expect(first.body.created).toBe(true);
+
+    const chrome = await call("POST", "/v2/connect", { body: { platform: "chrome", access_key: key } });
+    expect(chrome.status).toBe(200);
+    expect(chrome.body).toMatchObject({ created: false, pair_id: first.body.pair_id });
+
+    const again = await call("POST", "/v2/connect", { body: { platform: "safari", name: "New Mac", access_key: key } });
+    expect(again.status).toBe(409);
+    expect(again.body).toMatchObject({ error: "safari_device_exists", device: { name: "Old Mac" } });
+
+    const takeover = await call("POST", "/v2/connect", {
+      body: { platform: "safari", name: "New Mac", access_key: key, replace_safari: true },
+    });
+    expect(takeover.status).toBe(200);
+    expect(takeover.body).toMatchObject({ created: false, pair_id: first.body.pair_id });
+    expect(takeover.body.replaced_device).toBe(first.body.device_id);
+    expect((await call("GET", "/v2/snapshot", { token: first.body.token })).status).toBe(401);
+    const devices = await call("GET", "/v2/devices", { token: takeover.body.token });
+    expect(devices.body.devices.map((d: { name: string | null }) => d.name ?? "").sort()).toEqual(["", "New Mac"]);
+  });
+
+  it("issues per-user keys with a bookmark limit and revokes them", async () => {
+    const issued = await adminCall("POST", "/v2/admin/keys", { label: "friend", max_bookmarks: 2 });
     expect(issued.status).toBe(200);
     expect(issued.body.key).toMatch(/^sbk_[0-9a-f]{48}$/);
 
-    const first = await call("POST", "/v2/pairs", { body: { platform: "safari", access_key: issued.body.key } });
+    const first = await call("POST", "/v2/connect", { body: { platform: "safari", access_key: issued.body.key } });
     expect(first.status).toBe(200);
-    const second = await call("POST", "/v2/pairs", { body: { platform: "safari", access_key: issued.body.key } });
-    expect(second.status).toBe(403);
-    expect(second.body.error).toBe("group_limit_reached");
-
     const three = [A, B, "https://c.example/"].map(url => ({ url, folderPath: [] }));
     const capped = await call("POST", "/v2/safari/snapshot", { token: first.body.token, body: { bookmarks: three } });
     expect(capped.body.stats).toMatchObject({ inserted: 2, skipped: 1 });
 
     const listed = await adminCall("GET", "/v2/admin/keys");
     const entry = listed.body.keys.find((k: { id: string }) => k.id === issued.body.id);
-    expect(entry).toMatchObject({ label: "friend", max_groups: 1, max_bookmarks: 2, revoked_at: null });
-    expect(entry.groups.map((g: { pair_id: string }) => g.pair_id)).toEqual([first.body.pair_id]);
+    expect(entry).toMatchObject({ label: "friend", max_bookmarks: 2, revoked_at: null, group: { pair_id: first.body.pair_id } });
 
     const stats = await adminCall("GET", `/v2/admin/groups/${first.body.pair_id}`);
     expect(stats.body).toMatchObject({ bookmarks: 2, tombstones: 0, max_bookmarks: 2 });
@@ -330,7 +360,7 @@ describe("access keys", () => {
     expect(blocked.body.error).toBe("group_disabled");
     const join = await call("POST", "/v2/join", { body: { code: first.body.code, platform: "chrome" } });
     expect(join.status).toBe(404);
-    expect((await call("POST", "/v2/pairs", { body: { platform: "safari", access_key: issued.body.key } })).body.error).toBe(
+    expect((await call("POST", "/v2/connect", { body: { platform: "safari", access_key: issued.body.key } })).body.error).toBe(
       "invalid_access_key",
     );
   });

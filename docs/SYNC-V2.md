@@ -115,30 +115,39 @@ download.
 
 ## Access control
 
-Creating a group needs an access key; joining needs a pairing code from an
-existing member.
+An access key identifies a user: **one access key, one sync group, one
+`pair_id`**. All of that user's devices share the `pair_id`; each device has its
+own token so it can be removed on its own.
 
-- `ACCESS_KEY` (Worker secret, at least 16 characters): a shared key. Anyone
-  holding it can create groups, without limits.
+- `ACCESS_KEY` (Worker secret, at least 16 characters): the owner's key.
 - `ADMIN_KEY` (Worker secret, at least 16 characters): enables `/v2/admin`,
-  which issues per-user keys (`sbk_` + 48 hex characters) with a limit on
-  groups (default 1) and on bookmarks per group (default 50 000). Revoking a key
-  disables all its groups: every call from their devices gets
-  `403 group_disabled` and their pairing codes stop working.
+  which issues keys for other users (`sbk_` + 48 hex characters), optionally
+  with a lower bookmark limit. Revoking a key disables its group: every call
+  from its devices gets `403 group_disabled` and its pairing codes stop working.
 - With neither secret set, no group can be created (`403
   access_key_not_configured`).
-- The key is sent as `access_key` in the body of `POST /v2/pairs` (or the
-  `X-Access-Key` header). v1 `POST /api/pair/generate` accepts only the master
-  `ACCESS_KEY`, in `X-Access-Key`.
+
+`POST /v2/connect` `{access_key, platform, name, replace_safari?}`:
+
+- The key has no group yet: the group is created with this device, and a
+  pairing code is returned (`created: true`).
+- The key already has a group: this device joins it (`created: false`). A group
+  has one Safari device; if another one is active the answer is `409
+  safari_device_exists` with its name, and the app asks before retrying with
+  `replace_safari: true`, which revokes the old one (new or reinstalled Mac).
+
+Browsers normally join with a pairing code (`POST /v2/join`), so the access key
+only has to be typed on the Mac. v1 `POST /api/pair/generate` accepts only the
+master `ACCESS_KEY`, in `X-Access-Key`.
 
 Groups are never merged across users: two users with the same URL each have
 their own row in their own Durable Object.
 
 ## Pairing and tokens
 
-- `POST /v2/pairs` creates a group and its first device and returns a pairing
-  code. `POST /v2/pair-code` issues a new code for an existing group (the
-  previous code stops working). `POST /v2/join` redeems a code once.
+- `POST /v2/pair-code` issues a code for the caller's group (the previous code
+  stops working). `POST /v2/join` redeems a code once and adds the device to
+  that group.
 - Codes: 8 characters from `23456789ABCDEFGHJKMNPQRSTUVWXYZ`, shown as
   `XXXX-XXXX`, valid 30 minutes, single use (enforced by the Registry Durable
   Object, strongly consistent). Failed joins are limited per IP and globally.
@@ -156,7 +165,7 @@ their own row in their own Durable Object.
 | method | path | auth |
 |---|---|---|
 | GET | `/v2/health` | none |
-| POST | `/v2/pairs` | access key (rate limited) |
+| POST | `/v2/connect` | access key (rate limited) |
 | POST | `/v2/join` | none (rate limited) |
 | POST | `/v2/pair-code` | token |
 | GET | `/v2/devices` | token |
@@ -168,9 +177,9 @@ their own row in their own Durable Object.
 | GET | `/v2/safari/pending` | token (Safari) |
 | POST | `/v2/ws-ticket` | token |
 | GET | `/v2/ws?pair=&ticket=` | ticket |
-| POST | `/v2/admin/keys` | admin (`{label, max_groups, max_bookmarks}`) |
+| POST | `/v2/admin/keys` | admin (`{label, max_bookmarks}`) |
 | GET | `/v2/admin/keys` | admin |
-| DELETE | `/v2/admin/keys/{id}` | admin (revokes and disables its groups) |
+| DELETE | `/v2/admin/keys/{id}` | admin (revokes the key, disables its group) |
 | GET | `/v2/admin/groups/{pair_id}` | admin (usage) |
 | POST | `/v2/admin/groups/{pair_id}/disable` | admin |
 | DELETE | `/v2/admin/groups/{pair_id}` | admin (deletes all its data) |
@@ -182,7 +191,7 @@ Admin calls use `Authorization: Bearer <ADMIN_KEY>` and return 404 when
 
 URL 4096 chars, title 1024 chars (longer titles are truncated), folder depth
 32, folder name 255 chars, 500 ops per request, 50 000 active bookmarks per
-group (lower if the access key says so), 16 MB request body, 10 group creations
+group (lower if the access key says so), 16 MB request body, 10 `/v2/connect` calls
 per IP per hour.
 
 ## Not covered

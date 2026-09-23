@@ -45,8 +45,6 @@ export const COMPACTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const ACCESS = {
   keyPrefix: "sbk_",
   minSecretLength: 16,
-  defaultMaxGroups: 1,
-  maxGroupsLimit: 100,
 } as const;
 
 export const PLATFORMS = ["safari", "chrome", "firefox"] as const;
