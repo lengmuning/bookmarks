@@ -1,106 +1,109 @@
-const STORAGE_KEY = "sync_config";
+// Popup shared by the Chrome and Firefox extensions. Source of truth:
+// extensions-shared/popup/popup.js, copied by scripts/sync-extensions.sh.
 
-const el = {
-  statusPaired: document.getElementById("status-paired"),
-  statusUnpaired: document.getElementById("status-unpaired"),
-  pairIdDisplay: document.getElementById("pair-id-display"),
-  lastSync: document.getElementById("last-sync"),
-  pairCode: document.getElementById("pair-code"),
-  apiUrl: document.getElementById("api-url"),
-};
+const ext = globalThis.browser ?? globalThis.chrome;
+const $ = id => document.getElementById(id);
+const show = (id, visible) => $(id).classList.toggle("hidden", !visible);
 
-async function getConfig() {
-  const result = await browser.storage.local.get(STORAGE_KEY);
-  return result[STORAGE_KEY] || {};
+function setError(text) {
+  $("error").textContent = text || "";
+  show("error", Boolean(text));
 }
 
-function normalizeApiUrl(value) {
-  return String(value || "").trim().replace(/\/+$/, "");
+function describeResult(result) {
+  if (!result) return "—";
+  const parts = [
+    [result.created, "added"],
+    [result.moved, "moved into Safari's folders"],
+    [result.duplicatesRemoved, "duplicates merged"],
+    [result.removed, "removed"],
+    [result.pushed, "uploaded"],
+    [result.rejected, "put back"],
+  ]
+    .filter(([count]) => count > 0)
+    .map(([count, label]) => `${count} ${label}`);
+  return parts.length ? parts.join(", ") : "No changes";
 }
 
-function showPaired(config) {
-  el.statusPaired.classList.remove("hidden");
-  el.statusUnpaired.classList.add("hidden");
-  el.pairIdDisplay.textContent = (config.pair_id || "").slice(0, 8) + "...";
-  el.lastSync.textContent = config.last_sync
-    ? new Date(config.last_sync).toLocaleString()
-    : "Never";
+async function send(message) {
+  const response = await ext.runtime.sendMessage(message);
+  return response || { ok: false, error: "No response from the extension." };
 }
 
-function showUnpaired() {
-  el.statusPaired.classList.add("hidden");
-  el.statusUnpaired.classList.remove("hidden");
-}
+async function refresh() {
+  const state = await send({ type: "status" });
+  const status = state.status || {};
+  show("legacy", state.legacyConfig && !state.paired);
+  show("unpaired", !state.paired);
+  show("paired", state.paired);
+  show("backup", Boolean(state.backupCreatedAt));
 
-async function init() {
-  const config = await getConfig();
-  if (config.api_url) el.apiUrl.value = config.api_url;
-  if (config.pair_id) showPaired(config); else showUnpaired();
-}
-
-document.getElementById("btn-join").addEventListener("click", async () => {
-  const code = el.pairCode.value.trim();
-  const apiUrl = normalizeApiUrl(el.apiUrl.value);
-
-  if (!/^\d{6}$/.test(code)) {
-    alert("Please enter a valid 6-digit pairing code");
-    return;
+  const badge = $("badge");
+  badge.className = "badge";
+  if (!state.paired) {
+    badge.textContent = "Not connected";
+  } else if (status.auth_failed) {
+    badge.textContent = "Stopped";
+    badge.classList.add("warn");
+  } else {
+    badge.textContent = state.connected ? "Live" : "Connected";
+    badge.classList.add("ok");
   }
-  if (!apiUrl) {
-    alert("Please enter the Worker URL");
-    return;
-  }
 
+  if (state.paired) {
+    $("worker").textContent = state.apiUrl;
+    $("last-sync").textContent = status.last_sync_at ? new Date(status.last_sync_at).toLocaleString() : "Never";
+    $("last-result").textContent = describeResult(status.last_result);
+    $("queued").textContent = String(state.queued);
+  }
+  setError(status.last_error);
+}
+
+async function run(buttonId, busyText, message) {
+  const button = $(buttonId);
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = busyText;
   try {
-    const res = await fetch(`${apiUrl}/api/pair/join`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, browser: "firefox", device_name: "Firefox" }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      alert("Failed to connect: " + (data.error || `HTTP ${res.status}`));
-      return;
-    }
-
-    const config = {
-      pair_id: data.pair_id,
-      device_id: data.device_id,
-      device_token: data.device_token,
-      api_url: apiUrl,
-      pair_code: code,
-      last_sync: data.server_now || 0,
-    };
-    await browser.storage.local.set({ [STORAGE_KEY]: config });
-    el.apiUrl.value = apiUrl;
-
-    const syncResult = await browser.runtime.sendMessage({ type: "full_sync" });
-    if (!syncResult?.ok) {
-      alert("Connected, but initial sync failed: " + (syncResult?.error || "unknown error"));
-    }
-    showPaired(config);
-    browser.runtime.sendMessage({ type: "reconnect_ws" }).catch(() => {});
+    const result = await send(message);
+    if (!result.ok) setError(result.error);
+    await refresh();
+    if (!result.ok) setError(result.error);
   } catch (err) {
-    alert("Connection failed: " + (err?.message || String(err)));
+    setError(err.message || String(err));
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
   }
-});
+}
 
-document.getElementById("btn-sync-now").addEventListener("click", async () => {
-  const syncResult = await browser.runtime.sendMessage({ type: "full_sync" });
-  if (!syncResult?.ok) {
-    alert("Sync failed: " + (syncResult?.error || "unknown error"));
+$("connect").addEventListener("click", () => {
+  const apiUrl = $("api-url").value.trim();
+  const code = $("code").value.trim();
+  if (!apiUrl || !code) {
+    setError("Enter the Worker URL and the pairing code from the Mac app.");
     return;
   }
-  const updated = await getConfig();
-  el.lastSync.textContent = updated.last_sync
-    ? new Date(updated.last_sync).toLocaleString()
-    : "Never";
+  run("connect", "Connecting…", { type: "join", apiUrl, code });
 });
 
-document.getElementById("btn-unpair").addEventListener("click", async () => {
-  await browser.storage.local.remove(STORAGE_KEY);
-  await browser.storage.local.remove("local_url_map");
-  showUnpaired();
+$("sync").addEventListener("click", () => run("sync", "Syncing…", { type: "sync" }));
+
+$("disconnect").addEventListener("click", () => {
+  if (!confirm("Disconnect this browser from the sync group? Your bookmarks stay where they are.")) return;
+  run("disconnect", "Disconnecting…", { type: "unpair" });
 });
 
-init();
+$("backup").addEventListener("click", async () => {
+  const { sync_v2_backup: backup } = await ext.storage.local.get("sync_v2_backup");
+  if (!backup) return;
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `bookmarks-backup-${new Date(backup.created_at).toISOString().slice(0, 10)}.json`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+});
+
+refresh().catch(err => setError(err.message || String(err)));
