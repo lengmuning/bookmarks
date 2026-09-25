@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Safari Bookmarks Sync Admin</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="icon.svg" alt="" width="28" height="28">
+      <span class="brand-name">Safari Bookmarks Sync</span>
+      <span class="brand-sep" aria-hidden="true">/</span>
+      <span class="brand-area" data-i18n="area"></span>
+    </div>
+    <div class="topbar-actions">
+      <div class="segmented" role="group" aria-label="Language">
+        <button type="button" data-lang="zh" aria-pressed="false">中文</button>
+        <button type="button" data-lang="en" aria-pressed="false">English</button>
+      </div>
+      <button type="button" id="logout" class="btn btn-quiet" data-i18n="logout" hidden></button>
+    </div>
+  </header>
+
+  <main>
+    <p id="booting" class="booting" data-i18n="loading"></p>
+
+    <section id="login-view" class="login" hidden>
+      <form id="login-form" class="card login-card" novalidate>
+        <img src="icon.svg" alt="" width="56" height="56">
+        <h1 data-i18n="loginTitle"></h1>
+        <p class="muted" data-i18n="loginHint"></p>
+        <label for="admin-key" data-i18n="adminKey"></label>
+        <input id="admin-key" name="key" type="password" autocomplete="current-password" required spellcheck="false">
+        <p id="login-error" class="form-error" role="alert" hidden></p>
+        <button type="submit" class="btn btn-primary btn-block" data-i18n="signIn"></button>
+      </form>
+    </section>
+
+    <section id="app-view" hidden>
+      <div class="page-head">
+        <div>
+          <h1 data-i18n="usersTitle"></h1>
+          <p id="summary" class="muted"></p>
+        </div>
+        <div class="page-actions">
+          <button type="button" id="refresh" class="btn" data-i18n="refresh"></button>
+          <button type="button" id="new-key" class="btn btn-primary" data-i18n="newKey"></button>
+        </div>
+      </div>
+
+      <div class="card table-card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col" data-i18n="colUser"></th>
+                <th scope="col" data-i18n="colStatus"></th>
+                <th scope="col" data-i18n="colBookmarks"></th>
+                <th scope="col" data-i18n="colDevices"></th>
+                <th scope="col" data-i18n="colLastActive"></th>
+                <th scope="col" data-i18n="colCreated"></th>
+                <th scope="col" class="col-actions"><span class="visually-hidden" data-i18n="colActions"></span></th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <p id="empty" class="empty" data-i18n="empty" hidden></p>
+      </div>
+      <p class="footnote muted" data-i18n="footnote"></p>
+    </section>
+  </main>
+
+  <dialog id="dlg-create" aria-labelledby="dlg-create-title">
+    <form method="dialog" id="create-form" novalidate>
+      <h2 id="dlg-create-title" data-i18n="newKey"></h2>
+      <label for="create-label" data-i18n="label"></label>
+      <input id="create-label" maxlength="100" autocomplete="off" data-i18n-placeholder="labelPlaceholder">
+      <label for="create-limit" data-i18n="limit"></label>
+      <input id="create-limit" type="number" min="1" max="50000" step="1" value="50000" inputmode="numeric">
+      <p class="hint" data-i18n="limitHint"></p>
+      <p class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close data-i18n="cancel"></button>
+        <button type="submit" class="btn btn-primary" data-i18n="create"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-key" aria-labelledby="dlg-key-title">
+    <div class="dialog-body">
+      <h2 id="dlg-key-title"></h2>
+      <p class="notice" data-i18n="keyOnce"></p>
+      <label for="key-value" data-i18n="accessKey"></label>
+      <div class="copy-row">
+        <input id="key-value" class="mono" readonly spellcheck="false">
+        <button type="button" class="btn" id="copy-key" data-i18n="copy"></button>
+      </div>
+      <label for="key-instructions" data-i18n="instructions"></label>
+      <textarea id="key-instructions" rows="9" readonly></textarea>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="copy-instructions" data-i18n="copyInstructions"></button>
+        <button type="button" class="btn btn-primary" data-close data-i18n="done"></button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-edit" aria-labelledby="dlg-edit-title">
+    <form method="dialog" id="edit-form" novalidate>
+      <h2 id="dlg-edit-title"></h2>
+      <label for="edit-label" data-i18n="label"></label>
+      <input id="edit-label" maxlength="100" autocomplete="off" data-i18n-placeholder="labelPlaceholder">
+      <label for="edit-limit" data-i18n="limit"></label>
+      <input id="edit-limit" type="number" min="1" max="50000" step="1" inputmode="numeric">
+      <p class="hint" data-i18n="limitHint"></p>
+      <p id="edit-warning" class="notice" hidden></p>
+      <p class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close data-i18n="cancel"></button>
+        <button type="submit" class="btn btn-primary" data-i18n="save"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-confirm" aria-labelledby="dlg-confirm-title">
+    <form method="dialog" id="confirm-form" novalidate>
+      <h2 id="dlg-confirm-title"></h2>
+      <p id="confirm-message"></p>
+      <div id="confirm-typed" hidden>
+        <label for="confirm-input" id="confirm-typed-label"></label>
+        <input id="confirm-input" autocomplete="off" spellcheck="false">
+      </div>
+      <p class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close data-i18n="cancel"></button>
+        <button type="submit" class="btn btn-danger" id="confirm-ok"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-details" class="wide" aria-labelledby="dlg-details-title">
+    <div class="dialog-body">
+      <div class="dialog-head">
+        <h2 id="dlg-details-title"></h2>
+        <span id="details-status" class="badge"></span>
+      </div>
+      <dl id="details-facts" class="facts"></dl>
+      <div id="details-devices-section">
+        <h3 data-i18n="devices"></h3>
+        <div class="table-wrap">
+          <table class="compact">
+            <thead>
+              <tr>
+                <th scope="col" data-i18n="deviceName"></th>
+                <th scope="col" data-i18n="deviceType"></th>
+                <th scope="col" data-i18n="lastSeen"></th>
+                <th scope="col" data-i18n="joined"></th>
+              </tr>
+            </thead>
+            <tbody id="details-devices"></tbody>
+          </table>
+        </div>
+        <p id="details-no-devices" class="empty" data-i18n="noDevices" hidden></p>
+      </div>
+      <div class="dialog-actions split">
+        <div id="details-danger" class="action-group"></div>
+        <div class="action-group">
+          <span id="details-safe" class="action-group"></span>
+          <button type="button" class="btn btn-primary" data-close data-i18n="close"></button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

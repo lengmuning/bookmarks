@@ -451,6 +451,13 @@ export class SyncGroup extends DurableObject<Env> {
     });
   }
 
+  // Rows above a lowered limit are kept; only new bookmarks are refused.
+  async setMaxBookmarks(max: number): Promise<boolean> {
+    if (!this.initialized()) return false;
+    this.setMeta("max_bookmarks", String(max));
+    return true;
+  }
+
   async disable(): Promise<void> {
     if (!this.initialized() || this.disabled()) return;
     this.setMeta("disabled_at", String(Date.now()));

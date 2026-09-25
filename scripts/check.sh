@@ -6,8 +6,8 @@ cd "$(dirname "$0")/.."
 echo "== extension copies"
 scripts/sync-extensions.sh --check
 
-echo "== extension syntax"
-for f in extensions-shared/*.js extensions-shared/popup/*.js chrome-extension/background.js firefox-extension/background.js; do
+echo "== script syntax"
+for f in extensions-shared/*.js extensions-shared/popup/*.js chrome-extension/background.js firefox-extension/background.js worker/public/admin/app.js; do
   node --check "$f"
 done
 

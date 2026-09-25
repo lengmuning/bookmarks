@@ -3,7 +3,7 @@ import { sha256Hex, timingSafeEqual } from "./token";
 
 // Worker secrets (set with `wrangler secret put`):
 //   ACCESS_KEY  shared key; anyone holding it can create sync groups
-//   ADMIN_KEY   enables /v2/admin, which issues per-user access keys
+//   ADMIN_KEY   enables the /admin page and /v2/admin, which issue per-user access keys
 // With neither configured, no sync group can be created.
 
 export function configuredSecret(value: string | undefined): string | null {
@@ -33,10 +33,5 @@ export async function decideAccess(env: Env, presented: unknown): Promise<Access
   return { kind: "denied", status: 403, error: "invalid_access_key" };
 }
 
-export async function isAdmin(env: Env, request: Request): Promise<boolean | null> {
-  const admin = configuredSecret(env.ADMIN_KEY);
-  if (!admin) return null;
-  const header = request.headers.get("Authorization");
-  if (!header?.startsWith("Bearer ")) return false;
-  return secretMatches(header.slice(7).trim(), admin);
-}
+// Stored with each admin session, so changing ADMIN_KEY signs everyone out.
+export const adminFingerprint = (admin: string): Promise<string> => sha256Hex(`admin-session:${admin}`);
