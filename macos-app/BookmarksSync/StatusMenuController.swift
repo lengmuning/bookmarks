@@ -92,23 +92,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     }
 
     @objc private func confirmDeletions() {
-        guard let confirmation = app.state.deletionConfirmation else { return }
-        NSApp.activate()
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Delete \(confirmation.count) bookmarks in your other browsers?"
-        let examples = confirmation.sample.prefix(10).map { "• \($0)" }.joined(separator: "\n")
-        alert.informativeText = """
-            These bookmarks are no longer in Safari's bookmarks file. If you deleted them in Safari, \
-            delete them everywhere. If Safari's bookmarks look wrong (for example after iCloud replaced them), \
-            cancel and check Safari first; nothing is deleted until you confirm.
-
-            \(examples)
-            """
-        alert.addButton(withTitle: "Delete Everywhere")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        Task { await app.syncNow(confirmDeletions: true) }
+        app.confirmPendingDeletions()
     }
 
     @objc private func quit() {

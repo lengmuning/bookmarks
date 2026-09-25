@@ -80,6 +80,11 @@ public struct SnapshotStats: Codable, Equatable, Sendable {
 public struct DeletionConfirmation: Codable, Equatable, Sendable {
     public let count: Int
     public let sample: [String]
+
+    public init(count: Int, sample: [String]) {
+        self.count = count
+        self.sample = sample
+    }
 }
 
 public struct SafariSnapshotResponse: Decodable, Equatable, Sendable {
