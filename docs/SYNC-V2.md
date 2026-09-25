@@ -127,10 +127,13 @@ An access key identifies a user: **one access key, one sync group, one
 own token so it can be removed on its own.
 
 - `ACCESS_KEY` (Worker secret, at least 16 characters): the owner's key.
-- `ADMIN_KEY` (Worker secret, at least 16 characters): enables `/v2/admin`,
-  which issues keys for other users (`sbk_` + 48 hex characters), optionally
-  with a lower bookmark limit. Revoking a key disables its group: every call
-  from its devices gets `403 group_disabled` and its pairing codes stop working.
+- `ADMIN_KEY` (Worker secret, at least 16 characters): enables the admin page
+  at `/admin` and the script API at `/v2/admin`, which issue keys for other
+  users (`sbk_` + 48 hex characters), optionally with a lower bookmark limit.
+  Revoking a key disables its group: every call from its devices gets `403
+  group_disabled` and its pairing codes stop working. Resetting a key replaces
+  its secret; the group and its devices are kept, only new connections need the
+  new key. A lowered limit keeps existing rows and refuses new ones.
 - With neither secret set, no group can be created (`403
   access_key_not_configured`).
 
@@ -185,13 +188,25 @@ their own row in their own Durable Object.
 | GET | `/v2/ws?pair=&ticket=` | ticket |
 | POST | `/v2/admin/keys` | admin (`{label, max_bookmarks}`) |
 | GET | `/v2/admin/keys` | admin |
+| PATCH | `/v2/admin/keys/{id}` | admin (`{label?, max_bookmarks?}`) |
+| POST | `/v2/admin/keys/{id}/reset` | admin (returns the new key once) |
 | DELETE | `/v2/admin/keys/{id}` | admin (revokes the key, disables its group) |
 | GET | `/v2/admin/groups/{pair_id}` | admin (usage) |
 | POST | `/v2/admin/groups/{pair_id}/disable` | admin |
 | DELETE | `/v2/admin/groups/{pair_id}` | admin (deletes all its data) |
 
 Admin calls use `Authorization: Bearer <ADMIN_KEY>` and return 404 when
-`ADMIN_KEY` is not set.
+`ADMIN_KEY` is not set. `GET /v2/admin/keys` includes each group's usage
+(bookmarks, deletion records, devices, last activity, storage).
+
+The `/admin` page (files in `worker/public/admin`) signs in once with
+`ADMIN_KEY` at `POST /admin/api/login` and gets a 12-hour session cookie
+(`__Host-sbs_admin`, `HttpOnly; Secure; SameSite=Strict`; only its SHA-256 is
+stored, and changing `ADMIN_KEY` ends every session). `/admin/api/*` offers the
+same operations as `/v2/admin/*`; writes must come from the page's own origin.
+Wrong keys, on the page or as a Bearer token, are limited to 10 per IP per
+hour, after which that IP is refused even with the right key. The page is
+served with a CSP that allows only its own scripts and styles.
 
 ## Limits
 

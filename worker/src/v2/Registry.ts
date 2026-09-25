@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
-import { ACCESS, LIMITS, PAIRING } from "./limits";
+import { ACCESS, ADMIN, LIMITS, PAIRING } from "./limits";
 import { normalizePairingCode } from "./normalize";
-import { randomHex } from "./token";
+import { randomHex, sha256Hex } from "./token";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -13,6 +13,8 @@ export type ConnectResult =
   | { ok: true; created: true; pairId: string; maxBookmarks: number }
   | { ok: true; created: false; pairId: string }
   | { ok: false; reason: "rate_limited" | "invalid_access_key" | "group_disabled" };
+
+export type ResetKeyResult = { ok: true; id: string; key: string } | { ok: false; reason: "not_found" | "revoked" };
 
 export interface GroupInfo {
   pair_id: string;
@@ -31,6 +33,8 @@ export interface AccessKeyInfo {
 
 // The master ACCESS_KEY is recorded under this key id.
 const MASTER_KEY_ID = "master";
+
+const newAccessKey = () => ACCESS.keyPrefix + randomHex(24);
 
 function generateCode(): string {
   const alphabet = PAIRING.alphabet;
@@ -74,6 +78,11 @@ export class Registry extends DurableObject<Env> {
       created_at INTEGER NOT NULL,
       disabled_at INTEGER
     )`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS admin_sessions (
+      token_hash TEXT PRIMARY KEY,
+      admin_fp TEXT NOT NULL,
+      expires_at INTEGER NOT NULL
+    )`);
   }
 
   private windowCount(key: string, now: number): number {
@@ -93,6 +102,7 @@ export class Registry extends DurableObject<Env> {
   private cleanup(now: number): void {
     this.sql.exec("DELETE FROM codes WHERE expires_at <= ?", now);
     this.sql.exec("DELETE FROM counters WHERE window_start <= ?", now - 2 * HOUR_MS);
+    this.sql.exec("DELETE FROM admin_sessions WHERE expires_at <= ?", now);
   }
 
   // ----------------------------------------------------------- access keys
@@ -175,9 +185,8 @@ export class Registry extends DurableObject<Env> {
 
   async createKey(input: { label: string | null; maxBookmarks: number }): Promise<{ id: string; key: string }> {
     const id = crypto.randomUUID();
-    const key = ACCESS.keyPrefix + randomHex(24);
-    const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
-    const keyHash = Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, "0")).join("");
+    const key = newAccessKey();
+    const keyHash = await sha256Hex(key);
     this.sql.exec(
       "INSERT INTO access_keys (id, key_hash, label, max_bookmarks, created_at) VALUES (?, ?, ?, ?, ?)",
       id,
@@ -199,19 +208,45 @@ export class Registry extends DurableObject<Env> {
     };
   }
 
+  private keyInfo(row: Record<string, SqlStorageValue>): AccessKeyInfo {
+    return {
+      id: String(row.id),
+      label: row.label === null ? null : String(row.label),
+      max_bookmarks: Number(row.max_bookmarks),
+      created_at: Number(row.created_at),
+      revoked_at: row.revoked_at === null ? null : Number(row.revoked_at),
+      group: this.groupOf(String(row.id)),
+    };
+  }
+
   async listKeys(): Promise<{ keys: AccessKeyInfo[]; master_group: GroupInfo | null }> {
     const keys = this.sql
       .exec("SELECT id, label, max_bookmarks, created_at, revoked_at FROM access_keys ORDER BY created_at")
       .toArray()
-      .map(row => ({
-        id: String(row.id),
-        label: row.label === null ? null : String(row.label),
-        max_bookmarks: Number(row.max_bookmarks),
-        created_at: Number(row.created_at),
-        revoked_at: row.revoked_at === null ? null : Number(row.revoked_at),
-        group: this.groupOf(String(row.id)),
-      }));
+      .map(row => this.keyInfo(row));
     return { keys, master_group: this.groupOf(MASTER_KEY_ID) };
+  }
+
+  // Omitted fields are left unchanged; a null label clears it.
+  async updateKey(id: string, patch: { label?: string | null; maxBookmarks?: number }): Promise<AccessKeyInfo | null> {
+    if (!this.sql.exec("SELECT id FROM access_keys WHERE id = ?", id).toArray().length) return null;
+    if (patch.label !== undefined) this.sql.exec("UPDATE access_keys SET label = ? WHERE id = ?", patch.label, id);
+    if (patch.maxBookmarks !== undefined) {
+      this.sql.exec("UPDATE access_keys SET max_bookmarks = ? WHERE id = ?", patch.maxBookmarks, id);
+    }
+    const row = this.sql.exec("SELECT id, label, max_bookmarks, created_at, revoked_at FROM access_keys WHERE id = ?", id).one();
+    return this.keyInfo(row);
+  }
+
+  // Replaces the secret of an active key. The group and its devices are kept:
+  // devices sign in with their own tokens, only new connections need the key.
+  async resetKey(id: string): Promise<ResetKeyResult> {
+    const rows = this.sql.exec("SELECT revoked_at FROM access_keys WHERE id = ?", id).toArray();
+    if (!rows.length) return { ok: false, reason: "not_found" };
+    if (rows[0].revoked_at !== null) return { ok: false, reason: "revoked" };
+    const key = newAccessKey();
+    this.sql.exec("UPDATE access_keys SET key_hash = ? WHERE id = ?", await sha256Hex(key), id);
+    return { ok: true, id, key };
   }
 
   // Revokes the key and returns its group so the caller can disable it.
@@ -241,5 +276,41 @@ export class Registry extends DurableObject<Env> {
     this.sql.exec("DELETE FROM groups WHERE pair_id = ?", pairId);
     this.sql.exec("DELETE FROM codes WHERE pair_id = ?", pairId);
     return found;
+  }
+
+  // ----------------------------------------------------------- admin sign-in
+
+  // Every ADMIN_KEY attempt goes through here before its result is used, so a
+  // blocked IP learns nothing even when it guesses right.
+  async adminAuthAttempt(ip: string, matched: boolean): Promise<"ok" | "invalid" | "rate_limited"> {
+    const now = Date.now();
+    const key = `adminfail:${ip}`;
+    if (this.windowCount(key, now) >= ADMIN.failuresPerIpPerHour) return "rate_limited";
+    if (matched) return "ok";
+    this.bump(key, now);
+    return "invalid";
+  }
+
+  async adminCreateSession(adminFp: string): Promise<{ token: string; expiresAt: number }> {
+    const now = Date.now();
+    this.cleanup(now);
+    const token = randomHex(32);
+    const expiresAt = now + ADMIN.sessionTtlMs;
+    this.sql.exec(
+      "INSERT INTO admin_sessions (token_hash, admin_fp, expires_at) VALUES (?, ?, ?)",
+      await sha256Hex(token),
+      adminFp,
+      expiresAt,
+    );
+    return { token, expiresAt };
+  }
+
+  async adminSessionValid(tokenHash: string, adminFp: string): Promise<boolean> {
+    const rows = this.sql.exec("SELECT admin_fp, expires_at FROM admin_sessions WHERE token_hash = ?", tokenHash).toArray();
+    return rows.length > 0 && String(rows[0].admin_fp) === adminFp && Number(rows[0].expires_at) > Date.now();
+  }
+
+  async adminEndSession(tokenHash: string): Promise<void> {
+    this.sql.exec("DELETE FROM admin_sessions WHERE token_hash = ?", tokenHash);
   }
 }

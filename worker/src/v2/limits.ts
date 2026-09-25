@@ -47,5 +47,13 @@ export const ACCESS = {
   minSecretLength: 16,
 } as const;
 
-export const PLATFORMS = ["safari", "chrome", "firefox"] as const;
+export const ADMIN = {
+  cookie: "__Host-sbs_admin",
+  sessionTtlMs: 12 * 60 * 60 * 1000,
+  // Failed ADMIN_KEY attempts (page sign-in or Bearer) per IP per hour.
+  failuresPerIpPerHour: 10,
+  labelLength: 100,
+} as const;
+
+export const PLATFORMS =["safari", "chrome", "firefox"] as const;
 export type Platform = (typeof PLATFORMS)[number];

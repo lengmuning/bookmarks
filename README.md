@@ -30,7 +30,7 @@ Mac 菜单栏 App (AppKit)                 Chrome / Firefox 扩展
 
 | 目录 | 内容 |
 |---|---|
-| `worker/` | Cloudflare Worker，代码在 `src/v2` |
+| `worker/` | Cloudflare Worker，代码在 `src/v2`，管理页面在 `public/admin` |
 | `extensions-shared/` | 两个浏览器扩展共用的同步引擎、弹窗和测试（改这里，再运行 `scripts/sync-extensions.sh`） |
 | `chrome-extension/`, `firefox-extension/` | 扩展本体，`lib/` 和 `popup/` 由脚本从 `extensions-shared/` 复制 |
 | `macos-app/` | Mac 菜单栏 App，Xcode 工程由 `project.yml` 用 XcodeGen 生成 |
@@ -52,7 +52,7 @@ npm install
 ```bash
 openssl rand -hex 24                   # 生成一个随机密钥
 npx wrangler secret put ACCESS_KEY     # 你自己的 Access Key
-npx wrangler secret put ADMIN_KEY      # 可选：用来给其他用户发 Access Key
+npx wrangler secret put ADMIN_KEY      # 可选：打开管理页面，给其他用户发 Access Key（和 ACCESS_KEY 用不同的值）
 ```
 
 **部署。** Durable Object 的迁移会随部署自动执行：
@@ -62,18 +62,33 @@ npx wrangler deploy
 curl https://<你的 Worker 地址>/v2/health
 ```
 
-### 给其他用户发 Access Key（可选，需要 ADMIN_KEY）
+### 管理页面：给其他用户发 Access Key（可选，需要 ADMIN_KEY）
 
-每个 key 对应一个用户和一个同步组。吊销 key 会停用这个组，它的所有设备会立即停止同步。
+设置了 `ADMIN_KEY` 之后，打开 `https://<你的 Worker 地址>/admin`，用 ADMIN_KEY 登录（登录状态保持 12 小时）。页面支持中文和英文，可以：
+
+- 查看所有用户：状态、书签数和上限、设备数、最后活动时间；
+- 新建 Access Key：填备注名和书签上限（1 到 50000）。新 Key 只在创建时完整显示一次，旁边附带可以直接发给对方的设置说明；
+- 编辑备注名和书签上限。上限调低到比现有书签还少时，已有书签保留，新增的书签不再同步；
+- 重置 Key：用户弄丢 Key 时用。旧 Key 立即失效，同步组、书签和已连接的设备都保留，只有连接新设备时需要新 Key；
+- 吊销 Key：这个用户的所有设备立即停止同步，无法恢复；
+- 删除某个用户在服务器上的全部同步数据（需要输入确认），用户电脑和浏览器里的书签不受影响。
+
+安全措施：ADMIN_KEY 只在登录时发送一次，之后用 HttpOnly Cookie 保持登录；同一个 IP 一小时内输错 10 次会被暂时拒绝；修改 ADMIN_KEY 会让所有已登录的页面失效。想再加一层保护，可以在 Cloudflare Zero Trust 里给 `/admin` 路径配置 Cloudflare Access（邮箱验证码登录，50 人以内免费）。
+
+同样的操作也可以用命令行完成：
 
 ```bash
-W=https://<你的 Worker 地址>; A="Authorization: Bearer <ADMIN_KEY>"
+W=https://<你的 Worker 地址>; A="Authorization: Bearer <ADMIN_KEY>"; J="Content-Type: application/json"
 
 # 发一个 key（max_bookmarks 可选，默认 50000）
-curl -X POST $W/v2/admin/keys -H "$A" -H "Content-Type: application/json" -d '{"label":"朋友A","max_bookmarks":5000}'
+curl -X POST $W/v2/admin/keys -H "$A" -H "$J" -d '{"label":"朋友A","max_bookmarks":5000}'
 
-# 列出所有 key 和它们的同步组
+# 列出所有 key、它们的同步组和用量
 curl $W/v2/admin/keys -H "$A"
+
+# 修改备注名或书签上限 / 重置 key（返回新 key）
+curl -X PATCH $W/v2/admin/keys/<key_id> -H "$A" -H "$J" -d '{"label":"朋友A","max_bookmarks":8000}'
+curl -X POST $W/v2/admin/keys/<key_id>/reset -H "$A"
 
 # 查看某个组的用量、设备
 curl $W/v2/admin/groups/<pair_id> -H "$A"
@@ -90,7 +105,7 @@ curl -X DELETE $W/v2/admin/groups/<pair_id> -H "$A"
 
 ### Mac App
 
-1. 打开 `dist/Safari-Bookmarks-Sync-2.0.0.dmg`，把 App 拖进"应用程序"。App 用开发者证书签名但没有公证，第一次打开需要在 Finder 里右键点击 App，选"打开"。
+1. 打开 `dist/Safari-Bookmarks-Sync-2.0.1.dmg`，把 App 拖进"应用程序"。App 用开发者证书签名但没有公证，第一次打开需要在 Finder 里右键点击 App，选"打开"。
 2. App 常驻在菜单栏，第一次打开会弹出设置窗口。填入 Worker 地址和你的 Access Key，点"Connect"。
 3. 接着会弹出一个已经定位在 Safari 文件夹的选择框，点"Allow Access"。macOS 把 `~/Library/Safari` 列为受保护目录，任何 App 都不能自己读取，所以这一步授权是必需的，只需做一次。
 4. 设置窗口会显示一个配对码（例如 `K7PM-3QXD`，30 分钟内有效、只能用一次），拿去给 Chrome 或 Firefox 用。需要时可以点"New Pairing Code"重新生成。
@@ -110,13 +125,13 @@ curl -X DELETE $W/v2/admin/groups/<pair_id> -H "$A"
 
 ### Chrome
 
-1. 打开 `chrome://extensions`，开启"开发者模式"，点"加载已解压的扩展程序"，选 `chrome-extension/` 目录。上架 Chrome 应用商店时用 `dist/safari-bookmarks-sync-chrome-2.0.0.zip`。需要 Chrome 116 或更新版本。
+1. 打开 `chrome://extensions`，开启"开发者模式"，点"加载已解压的扩展程序"，选 `chrome-extension/` 目录。上架 Chrome 应用商店时用 `dist/safari-bookmarks-sync-chrome-2.0.1.zip`。需要 Chrome 116 或更新版本。
 2. 点扩展图标，填入 Worker 地址和配对码，点"Connect"。
 3. 连接前会先备份整个书签树，弹窗里可以随时下载这份备份。
 
 ### Firefox
 
-1. 打开 `about:debugging#/runtime/this-firefox`，点"临时载入附加组件"，选 `firefox-extension/manifest.json`。上架 addons.mozilla.org 时用 `dist/safari-bookmarks-sync-firefox-2.0.0.zip`。
+1. 打开 `about:debugging#/runtime/this-firefox`，点"临时载入附加组件"，选 `firefox-extension/manifest.json`。上架 addons.mozilla.org 时用 `dist/safari-bookmarks-sync-firefox-2.0.1.zip`。
 2. 使用方法同 Chrome。
 
 ## 从 1.x 升级
@@ -125,7 +140,7 @@ curl -X DELETE $W/v2/admin/groups/<pair_id> -H "$A"
 
 1. **Worker**：部署新版。部署时会自动删除旧版的 `SyncChannel` Durable Object，它只负责实时通知，不保存书签。旧版的书签数据在 D1 数据库 `bookmarks-db` 和 KV 命名空间 `BOOKMARKS_KV` 里，新版不再读取，也不会迁移（各端重新连接后会从 Safari 重新上传）。确认新版工作正常后，可以在 Cloudflare 控制台里手动删除这两个资源。
 2. **Mac**：新 App 的 Bundle ID 变了（`com.lengmuning.bookmarks-sync`），不会读取旧 App 的设置，需要在新 App 里重新连接。确认新 App 工作正常后，删除旧的 "Safari Bookmarks Sync" App，旧的 Safari 扩展会随之消失。
-3. **浏览器扩展**：升级到 2.0.0 后，弹窗会提示用 Mac App 生成的新配对码重新连接。连接时，旧的 `Safari Bookmarks` 文件夹会被改名为 `Safari Bookmarks (before sync v2)`，然后新建一个干净的同步文件夹：
+3. **浏览器扩展**：升级到 2.0 以上版本后，弹窗会提示用 Mac App 生成的新配对码重新连接。连接时，旧的 `Safari Bookmarks` 文件夹会被改名为 `Safari Bookmarks (before sync v2)`，然后新建一个干净的同步文件夹：
    - Safari 里有的书签会被移到新文件夹；
    - 旧文件夹最后只剩 Safari 里没有的书签。旧版从不同步删除操作，所以这些多半是早已在 Safari 删掉的，App 不会上传它们，留给你检查。想保留的，拖进新的 `Safari Bookmarks` 文件夹即可；
    - 旧文件夹如果被清空了，会自动删除。
@@ -141,6 +156,7 @@ scripts/sync-extensions.sh         # 修改 extensions-shared/ 之后复制到�
 scripts/package-extensions.sh      # 打包两个扩展的 zip 到 dist/
 macos-app/scripts/build-dmg.sh     # Release 构建并打包 DMG 到 dist/
 macos-app/scripts/generate.sh      # 生成 Xcode 工程后可以用 Xcode 打开 macos-app/BookmarksSync.xcodeproj
+swift scripts/make-icons.swift     # 重新生成 Mac App 和两个扩展的图标
 ```
 
 Mac App 的 Debug 版支持 `-snapshot-settings`（加 `-paired` 显示已连接的状态），会把设置窗口渲染成 PNG 保存到 App 的临时目录，用来检查排版。
