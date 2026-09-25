@@ -1,42 +1,32 @@
 import AppKit
 import BookmarksSyncCore
 
+/// Settings in the style of System Settings: a status header, notices only
+/// when something needs the user, then grouped rows. Rebuilt from the app
+/// state whenever it changes.
 @MainActor
-final class SettingsWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
-    private let app: AppController
+final class SettingsWindowController: NSWindowController {
+    private static let width: CGFloat = 540
+    private static let textWidth: CGFloat = 300
 
-    // Sync group, not connected
+    private let app: AppController
+    private let stack = NSStackView()
+    private let scroll = NSScrollView()
+    // Kept across rebuilds so what the user typed stays.
     private let workerField = NSTextField()
     private let accessKeyField = NSSecureTextField()
-    private lazy var connectButton = button("Connect", #selector(connect))
-    private let unpairedView = NSStackView()
+    private var clock: Timer?
 
-    // Sync group, paired
-    private let workerLabel = NSTextField(labelWithString: "")
-    private let groupLabel = NSTextField(labelWithString: "")
-    private let pairingCodeLabel = NSTextField(labelWithString: "")
-    private let pairingHintLabel = NSTextField(wrappingLabelWithString: "")
-    private lazy var newCodeButton = button("New Pairing Code", #selector(newPairingCode))
-    private let devicesTable = NSTableView()
-    private lazy var removeDeviceButton = button("Remove Selected", #selector(removeDevice))
-    private lazy var leaveButton = button("Leave Sync Group…", #selector(leaveGroup))
-    private let pairedView = NSStackView()
+    private let relative: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        formatter.dateTimeStyle = .named
+        return formatter
+    }()
 
-    // Safari
-    private let accessLabel = NSTextField(wrappingLabelWithString: "")
-
-    // Options
-    private lazy var autoSyncBox = NSButton(checkboxWithTitle: "Sync automatically", target: self, action: #selector(toggleAutoSync))
-    private lazy var loginBox = NSButton(checkboxWithTitle: "Open at login", target: self, action: #selector(toggleLogin))
-
-    // Status
-    private let statusLabel = NSTextField(wrappingLabelWithString: "")
-    private let errorLabel = NSTextField(wrappingLabelWithString: "")
-    private lazy var syncButton = button("Sync Now", #selector(syncNow))
-
-    private let dateFormatter: DateFormatter = {
+    private let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.dateStyle = .medium
+        formatter.dateStyle = .none
         formatter.timeStyle = .short
         return formatter
     }()
@@ -44,16 +34,17 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     init(app: AppController) {
         self.app = app
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 720),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 600),
+            styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Safari Bookmarks Sync"
-        window.minSize = NSSize(width: 520, height: 480)
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         super.init(window: window)
-        buildContent()
+        buildFrame()
         window.setFrameAutosaveName("SettingsWindow")
         if !window.setFrameUsingName("SettingsWindow") { window.center() }
         app.observe { [weak self] in self?.refresh() }
@@ -69,141 +60,423 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         NSApp.activate()
         window?.makeKeyAndOrderFront(nil)
         if app.isPaired { Task { await app.refreshDevices() } }
+        // Keeps "2 minutes ago" current.
+        if clock == nil {
+            clock = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.window?.isVisible == true, self.app.isPaired else { return }
+                    self.refresh()
+                }
+            }
+        }
     }
 
-    // MARK: Layout
+    // MARK: Frame
 
-    private func buildContent() {
-        workerField.placeholderString = "https://bookmarks.example.workers.dev"
-        accessKeyField.placeholderString = "Your access key"
-        for field in [workerField, accessKeyField] {
-            field.translatesAutoresizingMaskIntoConstraints = false
-            field.widthAnchor.constraint(greaterThanOrEqualToConstant: 280).isActive = true
-        }
-        connectButton.keyEquivalent = "\r"
-
-        unpairedView.orientation = .vertical
-        unpairedView.alignment = .leading
-        unpairedView.spacing = 10
-        unpairedView.addArrangedSubviews([
-            grid([("Worker URL", workerField), ("Access key", accessKeyField)]),
-            hint("Your access key stands for you: one key, one sync group. The first Mac creates the group; connecting again later (a new or reinstalled Mac) returns to the same group. Chrome and Firefox join with a pairing code from this app."),
-            connectButton,
-        ])
-
-        pairingCodeLabel.font = .monospacedSystemFont(ofSize: 22, weight: .semibold)
-        pairingCodeLabel.isSelectable = true
-        pairingHintLabel.textColor = .secondaryLabelColor
-        pairingHintLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        workerLabel.isSelectable = true
-        groupLabel.isSelectable = true
-
-        pairedView.orientation = .vertical
-        pairedView.alignment = .leading
-        pairedView.spacing = 10
-        pairedView.addArrangedSubviews([
-            grid([("Worker", workerLabel), ("Group", groupLabel)]),
-            row([newCodeButton, pairingCodeLabel]),
-            pairingHintLabel,
-            label("Devices in this group", bold: true),
-            devicesScroll(),
-            row([removeDeviceButton, leaveButton]),
-        ])
-
-        let chooseButton = button("Choose Safari Folder…", #selector(chooseSafariFolder))
-        let content = NSStackView()
-        content.orientation = .vertical
-        content.alignment = .leading
-        content.spacing = 22
-        content.edgeInsets = NSEdgeInsets(top: 20, left: 24, bottom: 24, right: 24)
-        content.addArrangedSubviews([
-            section("Sync group", [unpairedView, pairedView]),
-            section("Safari", [
-                accessLabel,
-                chooseButton,
-                hint("macOS does not let any app read Safari's bookmarks on its own, so this permission is granted once: the panel opens in the Safari folder and you click Allow Access. Choosing Bookmarks.plist itself also works, but then the file is rewritten in place instead of replaced atomically."),
-            ]),
-            section("Options", [autoSyncBox, loginBox, hint("Bookmarks added in other browsers are written into Safari only while Safari is not running. With automatic sync on, that happens as soon as you quit Safari.")]),
-            section("Status", [statusLabel, errorLabel, syncButton]),
-        ])
-        errorLabel.textColor = .systemRed
+    private func buildFrame() {
+        stack.orientation = .vertical
+        stack.alignment = .width
+        stack.spacing = 0
+        stack.edgeInsets = NSEdgeInsets(top: 4, left: 24, bottom: 22, right: 24)
+        stack.translatesAutoresizingMaskIntoConstraints = false
 
         let document = FlippedView()
         document.translatesAutoresizingMaskIntoConstraints = false
-        content.translatesAutoresizingMaskIntoConstraints = false
-        document.addSubview(content)
-        let scroll = NSScrollView()
+        document.addSubview(stack)
         scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         scroll.documentView = document
         NSLayoutConstraint.activate([
-            content.topAnchor.constraint(equalTo: document.topAnchor),
-            content.leadingAnchor.constraint(equalTo: document.leadingAnchor),
-            content.trailingAnchor.constraint(equalTo: document.trailingAnchor),
-            content.bottomAnchor.constraint(equalTo: document.bottomAnchor),
+            stack.topAnchor.constraint(equalTo: document.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor),
             document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
         ])
         window?.contentView = scroll
-    }
 
-    private func devicesScroll() -> NSScrollView {
-        for (id, title, width) in [("name", "Name", 200.0), ("platform", "Browser", 90.0), ("seen", "Last seen", 160.0)] {
-            let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
-            column.title = title
-            column.width = width
-            devicesTable.addTableColumn(column)
+        workerField.placeholderString = "https://bookmarks.example.workers.dev"
+        accessKeyField.placeholderString = "sbk_…"
+        for field in [workerField, accessKeyField] {
+            field.translatesAutoresizingMaskIntoConstraints = false
+            field.widthAnchor.constraint(equalToConstant: 250).isActive = true
+            field.lineBreakMode = .byTruncatingTail
         }
-        devicesTable.dataSource = self
-        devicesTable.delegate = self
-        devicesTable.usesAlternatingRowBackgroundColors = true
-        devicesTable.allowsEmptySelection = true
-        let scroll = NSScrollView()
-        scroll.documentView = devicesTable
-        scroll.hasVerticalScroller = true
-        scroll.borderType = .bezelBorder
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        scroll.heightAnchor.constraint(equalToConstant: 120).isActive = true
-        scroll.widthAnchor.constraint(greaterThanOrEqualToConstant: 460).isActive = true
-        return scroll
     }
 
-    private func section(_ title: String, _ views: [NSView]) -> NSView {
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 8
-        stack.addArrangedSubviews([label(title, bold: true, size: 15)] + views)
-        return stack
+    private func refresh() {
+        let editing = [workerField, accessKeyField].first { field in
+            field.currentEditor() != nil
+        }
+        if editing != nil { window?.endEditing(for: nil) }
+        if !app.isPaired, workerField.stringValue.isEmpty { workerField.stringValue = app.workerURLText }
+
+        for view in stack.arrangedSubviews {
+            stack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        let insets = stack.edgeInsets.left + stack.edgeInsets.right
+        for (view, spacing) in sections() {
+            stack.addArrangedSubview(view)
+            stack.setCustomSpacing(spacing, after: view)
+            view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -insets).isActive = true
+        }
+        if let editing { window?.makeFirstResponder(editing) }
+        fit()
     }
 
-    private func grid(_ rows: [(String, NSView)]) -> NSGridView {
-        let grid = NSGridView(views: rows.map { [label($0.0), $0.1] })
-        grid.rowSpacing = 8
-        grid.columnSpacing = 10
-        grid.column(at: 0).xPlacement = .trailing
-        grid.rowAlignment = .firstBaseline
-        return grid
+    /// Fits the window to its content, keeping the top edge in place.
+    private func fit() {
+        guard let window else { return }
+        stack.layoutSubtreeIfNeeded()
+        let titlebar = window.frame.height - window.contentLayoutRect.height
+        let available = (window.screen ?? NSScreen.main)?.visibleFrame.height ?? 900
+        let height = min(stack.fittingSize.height + titlebar, available - 40)
+        var frame = window.frame
+        frame.origin.y += frame.height - height
+        frame.size = NSSize(width: Self.width, height: height)
+        window.setFrame(frame, display: true)
     }
 
-    private func row(_ views: [NSView]) -> NSStackView {
-        let stack = NSStackView(views: views)
-        stack.orientation = .horizontal
-        stack.spacing = 12
-        stack.alignment = .firstBaseline
-        return stack
+    // MARK: Sections
+
+    private func sections() -> [(NSView, CGFloat)] {
+        var out: [(NSView, CGFloat)] = [(header(), 20)]
+        for notice in notices() { out.append((notice, 8)) }
+        if out.count > 1 { out[out.count - 1].1 = 20 }
+
+        if app.isPaired {
+            out += titled("Sync Group", [workerRow(), groupRow(), pairingRow()])
+            out += titled("Devices", deviceRows())
+        } else {
+            out += titled("Connect", [fieldRow("Worker URL", workerField), fieldRow("Access Key", accessKeyField)], spacingAfter: 10)
+            out.append((connectFooter(), 22))
+        }
+        out += titled("Safari", [safariRow()])
+        out += titled("General", [
+            switchRow("Sync automatically", isOn: app.autoSync, action: #selector(toggleAutoSync)),
+            switchRow("Open at login", isOn: app.launchAtLogin, action: #selector(toggleLogin)),
+        ])
+        out.append((footer(), 0))
+        return out
     }
 
-    private func label(_ text: String, bold: Bool = false, size: CGFloat = NSFont.systemFontSize) -> NSTextField {
+    private func titled(_ title: String, _ rows: [NSView], spacingAfter: CGFloat = 22) -> [(NSView, CGFloat)] {
+        let heading = label(title, size: 13, weight: .semibold)
+        let wrapper = NSView()
+        heading.translatesAutoresizingMaskIntoConstraints = false
+        wrapper.addSubview(heading)
+        NSLayoutConstraint.activate([
+            heading.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor, constant: 4),
+            heading.topAnchor.constraint(equalTo: wrapper.topAnchor),
+            heading.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor),
+        ])
+        return [(wrapper, 7), (group(rows), spacingAfter)]
+    }
+
+    private func header() -> NSView {
+        // From the bundle's asset catalog: NSApp.applicationIconImage can be a
+        // cached icon of an older install.
+        let icon = NSImageView(image: NSImage(named: "AppIcon") ?? NSApp.applicationIconImage)
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([icon.widthAnchor.constraint(equalToConstant: 58), icon.heightAnchor.constraint(equalToConstant: 58)])
+
+        let (text, tint) = status()
+        let indicator: NSView
+        if app.isSyncing {
+            let spinner = NSProgressIndicator()
+            spinner.style = .spinning
+            spinner.controlSize = .mini
+            spinner.startAnimation(nil)
+            indicator = spinner
+        } else {
+            let dot = NSImageView(image: symbol("circle.fill", size: 7))
+            dot.contentTintColor = tint
+            indicator = dot
+        }
+        let statusLine = NSStackView(views: [indicator, label(text, size: 12, color: .secondaryLabelColor)])
+        statusLine.spacing = 6
+        statusLine.alignment = .centerY
+
+        let titles = NSStackView(views: [label("Safari Bookmarks Sync", size: 18, weight: .semibold), statusLine])
+        titles.orientation = .vertical
+        titles.alignment = .leading
+        titles.spacing = 3
+
+        let row = NSStackView()
+        row.alignment = .centerY
+        row.spacing = 14
+        row.setViews([icon, titles], in: .leading)
+        if app.isPaired {
+            let sync = button("Sync Now", #selector(syncNow))
+            sync.isEnabled = app.isReady && !app.isSyncing
+            row.setViews([sync], in: .trailing)
+        }
+        return row
+    }
+
+    private func status() -> (String, NSColor) {
+        let state = app.state
+        if !app.isPaired { return ("Not connected", .systemGray) }
+        if !app.hasSafariAccess { return ("Needs access to Safari's bookmarks", .systemOrange) }
+        if app.isSyncing { return ("Syncing…", .systemBlue) }
+        if state.lastError != nil { return ("Sync failed", .systemRed) }
+        guard let last = state.lastSyncAt else { return ("Not synced yet", .systemGray) }
+        var text = "Synced \(relative.localizedString(for: last, relativeTo: Date()))"
+        if let stats = state.lastStats { text += " · \(stats.accepted.formatted()) bookmarks" }
+        return (text, state.deletionConfirmation == nil ? .systemGreen : .systemOrange)
+    }
+
+    private func notices() -> [NSView] {
+        let state = app.state
+        var out: [NSView] = []
+        if let error = state.lastError {
+            out.append(notice(error, symbol: "exclamationmark.triangle.fill", tint: .systemRed))
+        }
+        if let confirmation = state.deletionConfirmation {
+            out.append(notice(
+                "\(confirmation.count) bookmarks are gone from Safari. They are deleted elsewhere only after you confirm.",
+                symbol: "trash.fill",
+                tint: .systemOrange,
+                action: button("Review…", #selector(reviewDeletions))
+            ))
+        }
+        if state.waitingForSafariToQuit > 0 {
+            let count = state.waitingForSafariToQuit
+            out.append(notice(
+                "\(count) \(count == 1 ? "change" : "changes") from other browsers will be applied when you quit Safari.",
+                symbol: "clock.fill",
+                tint: .secondaryLabelColor
+            ))
+        }
+        return out
+    }
+
+    // MARK: Rows
+
+    private func workerRow() -> NSView {
+        let url = app.credentials?.workerURL
+        return row("Worker", trailing: [value(url?.host ?? url?.absoluteString ?? "—")])
+    }
+
+    private func groupRow() -> NSView {
+        row("Group ID", trailing: [value(String(app.credentials?.pairId.prefix(8) ?? "—"), mono: true)])
+    }
+
+    private func pairingRow() -> NSView {
+        guard let code = app.pairingCode, code.expiresAt > Date() else {
+            return row("Pairing Code", subtitle: "Adds Chrome or Firefox to this group.", trailing: [button("Create Code", #selector(newPairingCode))])
+        }
+        let codeLabel = label(code.code, size: 15, weight: .semibold, mono: true)
+        codeLabel.isSelectable = true
+        let copy = iconButton("doc.on.doc", tooltip: "Copy Code", #selector(copyCode))
+        return row(
+            "Pairing Code",
+            subtitle: "Enter it in the Chrome or Firefox extension. Works once, until \(timeFormatter.string(from: code.expiresAt)).",
+            trailing: [codeLabel, copy, button("New Code", #selector(newPairingCode))],
+            textWidth: 230
+        )
+    }
+
+    private func deviceRows() -> [NSView] {
+        let devices = app.devices.sorted { a, b in
+            if a.isSelf != b.isSelf { return a.isSelf }
+            return (a.lastSeenAt ?? 0) > (b.lastSeenAt ?? 0)
+        }
+        guard !devices.isEmpty else { return [row("Loading devices…", titleColor: .secondaryLabelColor)] }
+        return devices.map { device in
+            let kind = device.platform == "safari" ? "Safari" : device.platform.capitalized
+            let subtitle: String
+            if device.isSelf {
+                subtitle = "This Mac · \(kind)"
+            } else if let seen = device.lastSeenAt {
+                subtitle = "\(kind) · active \(relative.localizedString(for: Date(timeIntervalSince1970: seen / 1000), relativeTo: Date()))"
+            } else {
+                subtitle = kind
+            }
+            var trailing: [NSView] = []
+            if !device.isSelf {
+                let remove = button("Remove", #selector(removeDevice))
+                remove.controlSize = .small
+                remove.identifier = NSUserInterfaceItemIdentifier(device.id)
+                trailing.append(remove)
+            }
+            return row(
+                device.name ?? kind,
+                subtitle: subtitle,
+                icon: symbol(device.platform == "safari" ? "desktopcomputer" : "globe", size: 17),
+                trailing: trailing
+            )
+        }
+    }
+
+    private func safariRow() -> NSView {
+        guard app.hasSafariAccess else {
+            let allow = button("Allow Access…", #selector(chooseSafariFolder))
+            allow.bezelColor = .controlAccentColor
+            return row("Bookmarks Access", subtitle: "macOS asks once before the app can read Safari's bookmarks.", trailing: [allow])
+        }
+        if app.file.grantIsFolder() {
+            return row("Bookmarks Access", subtitle: "Allowed for the Safari folder.", trailing: [button("Change…", #selector(chooseSafariFolder))])
+        }
+        return row(
+            "Bookmarks Access",
+            subtitle: "Allowed for Bookmarks.plist only. Choose the Safari folder so changes can be saved safely.",
+            trailing: [button("Choose Folder…", #selector(chooseSafariFolder))]
+        )
+    }
+
+    private func connectFooter() -> NSView {
+        let connect = button("Connect", #selector(connect))
+        connect.keyEquivalent = "\r"
+        let hint = label("Your access key comes from the Worker's admin page.", size: 11, color: .secondaryLabelColor)
+        let row = NSStackView()
+        row.alignment = .centerY
+        row.edgeInsets = NSEdgeInsets(top: 0, left: 4, bottom: 0, right: 0)
+        row.setViews([hint], in: .leading)
+        row.setViews([connect], in: .trailing)
+        return row
+    }
+
+    private func footer() -> NSView {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        let row = NSStackView()
+        row.alignment = .centerY
+        if app.isPaired { row.setViews([button("Leave Sync Group…", #selector(leaveGroup))], in: .leading) }
+        row.setViews([label("Version \(version)", size: 11, color: .tertiaryLabelColor)], in: .trailing)
+        return row
+    }
+
+    // MARK: Building blocks
+
+    private func group(_ rows: [NSView]) -> NSView {
+        let inner = NSStackView()
+        inner.orientation = .vertical
+        inner.alignment = .width
+        inner.spacing = 0
+        for (index, row) in rows.enumerated() {
+            if index > 0 {
+                let line = separator(inset: (row as? RowView)?.hasIcon == true ? 50 : 14)
+                inner.addArrangedSubview(line)
+                line.widthAnchor.constraint(equalTo: inner.widthAnchor).isActive = true
+            }
+            inner.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: inner.widthAnchor).isActive = true
+        }
+        return GroupView(content: inner)
+    }
+
+    private func row(
+        _ title: String,
+        subtitle: String? = nil,
+        icon: NSImage? = nil,
+        trailing: [NSView] = [],
+        titleColor: NSColor = .labelColor,
+        textWidth: CGFloat = SettingsWindowController.textWidth
+    ) -> NSView {
+        let titleLabel = label(title, size: 13, color: titleColor)
+        var texts: [NSView] = [titleLabel]
+        if let subtitle { texts.append(wrapping(subtitle, size: 11, color: .secondaryLabelColor, width: textWidth)) }
+        let textStack = NSStackView(views: texts)
+        textStack.orientation = .vertical
+        textStack.alignment = .leading
+        textStack.spacing = 2
+
+        var leading: [NSView] = []
+        if let icon {
+            let image = NSImageView(image: icon)
+            image.contentTintColor = .secondaryLabelColor
+            image.translatesAutoresizingMaskIntoConstraints = false
+            image.widthAnchor.constraint(equalToConstant: 26).isActive = true
+            leading.append(image)
+        }
+        leading.append(textStack)
+
+        let row = RowView()
+        row.hasIcon = icon != nil
+        row.alignment = .centerY
+        row.spacing = 10
+        row.edgeInsets = NSEdgeInsets(top: 9, left: 14, bottom: 9, right: 14)
+        row.setViews(leading, in: .leading)
+        row.setViews(trailing, in: .trailing)
+        // The row grows with a wrapped description instead of clipping it.
+        NSLayoutConstraint.activate([
+            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 42),
+            textStack.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 9),
+            row.bottomAnchor.constraint(greaterThanOrEqualTo: textStack.bottomAnchor, constant: 9),
+        ])
+        return row
+    }
+
+    private func fieldRow(_ title: String, _ field: NSTextField) -> NSView {
+        row(title, trailing: [field])
+    }
+
+    private func switchRow(_ title: String, isOn: Bool, action: Selector) -> NSView {
+        let toggle = NSSwitch()
+        toggle.controlSize = .small
+        toggle.state = isOn ? .on : .off
+        toggle.target = self
+        toggle.action = action
+        return row(title, trailing: [toggle])
+    }
+
+    private func notice(_ text: String, symbol name: String, tint: NSColor, action: NSButton? = nil) -> NSView {
+        let icon = NSImageView(image: symbol(name, size: 14))
+        icon.contentTintColor = tint
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        icon.widthAnchor.constraint(equalToConstant: 20).isActive = true
+        let message = wrapping(text, size: 12, color: .labelColor, width: action == nil ? 420 : 320)
+        let row = NSStackView()
+        row.alignment = .centerY
+        row.spacing = 10
+        row.edgeInsets = NSEdgeInsets(top: 10, left: 14, bottom: 10, right: 14)
+        row.setViews([icon, message], in: .leading)
+        if let action { row.setViews([action], in: .trailing) }
+        NSLayoutConstraint.activate([
+            message.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 10),
+            row.bottomAnchor.constraint(greaterThanOrEqualTo: message.bottomAnchor, constant: 10),
+        ])
+        return GroupView(content: row)
+    }
+
+    private func separator(inset: CGFloat) -> NSView {
+        let line = NSBox()
+        line.boxType = .separator
+        line.translatesAutoresizingMaskIntoConstraints = false
+        let wrapper = NSView()
+        wrapper.addSubview(line)
+        NSLayoutConstraint.activate([
+            line.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor, constant: inset),
+            line.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor),
+            line.centerYAnchor.constraint(equalTo: wrapper.centerYAnchor),
+            wrapper.heightAnchor.constraint(equalToConstant: 1),
+        ])
+        return wrapper
+    }
+
+    private func label(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .labelColor, mono: Bool = false) -> NSTextField {
         let field = NSTextField(labelWithString: text)
-        field.font = bold ? .boldSystemFont(ofSize: size) : .systemFont(ofSize: size)
+        field.font = mono ? .monospacedSystemFont(ofSize: size, weight: weight) : .systemFont(ofSize: size, weight: weight)
+        field.textColor = color
+        field.lineBreakMode = .byTruncatingTail
         return field
     }
 
-    private func hint(_ text: String) -> NSTextField {
+    private func wrapping(_ text: String, size: CGFloat, color: NSColor, width: CGFloat = SettingsWindowController.textWidth) -> NSTextField {
         let field = NSTextField(wrappingLabelWithString: text)
-        field.textColor = .secondaryLabelColor
-        field.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        field.preferredMaxLayoutWidth = 520
+        field.font = .systemFont(ofSize: size)
+        field.textColor = color
+        field.preferredMaxLayoutWidth = width
+        field.isSelectable = false
+        return field
+    }
+
+    private func value(_ text: String, mono: Bool = false) -> NSTextField {
+        let field = label(text, size: 13, color: .secondaryLabelColor, mono: mono)
+        field.isSelectable = true
         return field
     }
 
@@ -211,78 +484,22 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         NSButton(title: title, target: self, action: action)
     }
 
-    // MARK: State
-
-    private func refresh() {
-        let paired = app.isPaired
-        unpairedView.isHidden = paired
-        pairedView.isHidden = !paired
-        if !paired, workerField.stringValue.isEmpty { workerField.stringValue = app.workerURLText }
-
-        if let credentials = app.credentials {
-            workerLabel.stringValue = credentials.workerURL.absoluteString
-            groupLabel.stringValue = String(credentials.pairId.prefix(8)) + "…"
-        }
-        if let code = app.pairingCode, code.expiresAt > Date() {
-            pairingCodeLabel.stringValue = code.code
-            pairingHintLabel.stringValue = "Enter this code in the Chrome or Firefox extension. It works once and expires at \(dateFormatter.string(from: code.expiresAt))."
-        } else {
-            pairingCodeLabel.stringValue = ""
-            pairingHintLabel.stringValue = "To add Chrome or Firefox, create a pairing code and enter it in the extension."
-        }
-        devicesTable.reloadData()
-        removeDeviceButton.isEnabled = selectedDevice.map { !$0.isSelf } ?? false
-
-        if app.hasSafariAccess, let path = app.file.grantedPath() {
-            accessLabel.stringValue = "Access granted to \(path)" + (app.file.grantIsFolder() ? "" : " (file only)")
-            accessLabel.textColor = .labelColor
-        } else {
-            accessLabel.stringValue = "The app cannot read Safari's bookmarks yet."
-            accessLabel.textColor = .systemOrange
-        }
-
-        autoSyncBox.state = app.autoSync ? .on : .off
-        loginBox.state = app.launchAtLogin ? .on : .off
-
-        statusLabel.stringValue = statusText()
-        errorLabel.stringValue = app.state.lastError ?? ""
-        errorLabel.isHidden = app.state.lastError == nil
-        syncButton.isEnabled = app.isReady && !app.isSyncing
+    private func iconButton(_ name: String, tooltip: String, _ action: Selector) -> NSButton {
+        let button = NSButton(image: symbol(name, size: 13), target: self, action: action)
+        button.isBordered = false
+        button.toolTip = tooltip
+        button.contentTintColor = .secondaryLabelColor
+        return button
     }
 
-    private func statusText() -> String {
-        let state = app.state
-        var lines: [String] = []
-        if app.isSyncing {
-            lines.append("Syncing…")
-        } else if let last = state.lastSyncAt {
-            lines.append("Last sync: \(dateFormatter.string(from: last))")
-        } else {
-            lines.append("Not synced yet.")
-        }
-        if let stats = state.lastStats {
-            lines.append("Safari has \(stats.accepted) bookmarks. Last upload: \(stats.inserted + stats.restored) new, \(stats.updated) changed, \(stats.deleted) deleted.")
-        }
-        if state.waitingForSafariToQuit > 0 {
-            lines.append("\(state.waitingForSafariToQuit) change(s) from other browsers will be applied to Safari when you quit Safari.")
-        }
-        if !state.pendingImports.isEmpty {
-            lines.append("\(state.pendingImports.count) added bookmark(s) are waiting for Safari to keep them.")
-        }
-        if let confirmation = state.deletionConfirmation {
-            lines.append("\(confirmation.count) bookmarks are missing from Safari and wait for your confirmation in the menu before they are deleted elsewhere.")
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    private var selectedDevice: Device? {
-        let row = devicesTable.selectedRow
-        return app.devices.indices.contains(row) ? app.devices[row] : nil
+    private func symbol(_ name: String, size: CGFloat) -> NSImage {
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage()
+        return image.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: size, weight: .regular)) ?? image
     }
 
     // MARK: Actions
 
-    private func perform(_ sender: NSButton, _ work: @escaping @MainActor () async throws -> Void) {
+    private func perform(_ sender: NSControl, _ work: @escaping @MainActor () async throws -> Void) {
         sender.isEnabled = false
         Task {
             do {
@@ -326,31 +543,50 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private func confirmTakeover(from name: String?) -> Bool {
         let alert = NSAlert()
         alert.messageText = "Use this Mac for Safari instead of “\(name ?? "the other Mac")”?"
-        alert.informativeText = "Your sync group already has a Mac with Safari, and a group has only one. If you continue, the other Mac stops syncing; its bookmarks stay as they are."
+        alert.informativeText = "A sync group has one Mac for Safari. The other Mac stops syncing; its bookmarks stay as they are."
         alert.addButton(withTitle: "Use This Mac")
         alert.addButton(withTitle: "Cancel")
         return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    @objc private func syncNow(_ sender: NSButton) {
+        Task { await app.syncNow() }
+    }
+
+    @objc private func reviewDeletions(_ sender: NSButton) {
+        app.confirmPendingDeletions()
     }
 
     @objc private func newPairingCode(_ sender: NSButton) {
         perform(sender) { [app] in try await app.newPairingCode() }
     }
 
+    @objc private func copyCode(_ sender: NSButton) {
+        guard let code = app.pairingCode?.code else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(code, forType: .string)
+        sender.image = symbol("checkmark", size: 13)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self, weak sender] in
+            guard let self else { return }
+            sender?.image = self.symbol("doc.on.doc", size: 13)
+        }
+    }
+
     @objc private func removeDevice(_ sender: NSButton) {
-        guard let device = selectedDevice, !device.isSelf else { return }
+        guard let id = sender.identifier?.rawValue, let device = app.devices.first(where: { $0.id == id }) else { return }
         let alert = NSAlert()
-        alert.messageText = "Remove \(device.name ?? device.platform) from the group?"
-        alert.informativeText = "It stops syncing immediately. Its bookmarks stay where they are."
+        alert.messageText = "Remove \(device.name ?? device.platform.capitalized) from the group?"
+        alert.informativeText = "It stops syncing right away. Its bookmarks stay where they are."
         alert.addButton(withTitle: "Remove")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        perform(sender) { [app] in try await app.removeDevice(device.id) }
+        perform(sender) { [app] in try await app.removeDevice(id) }
     }
 
     @objc private func leaveGroup(_ sender: NSButton) {
         let alert = NSAlert()
         alert.messageText = "Remove this Mac from the sync group?"
-        alert.informativeText = "Safari's bookmarks stay as they are. The other browsers keep syncing with each other until you set this Mac up again."
+        alert.informativeText = "Safari's bookmarks stay as they are. Chrome and Firefox keep syncing with each other until you connect this Mac again."
         alert.addButton(withTitle: "Leave")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
@@ -366,7 +602,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     /// the only click needed.
     private func askForSafariAccess() {
         let panel = NSOpenPanel()
-        panel.message = "macOS protects Safari's bookmarks. Click Allow Access to let this app read and update them (this is the Safari folder in your Library)."
+        panel.message = "Click Allow Access to let Safari Bookmarks Sync read and update Safari's bookmarks."
         panel.prompt = "Allow Access"
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
@@ -381,11 +617,11 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         }
     }
 
-    @objc private func toggleAutoSync(_ sender: NSButton) {
+    @objc private func toggleAutoSync(_ sender: NSSwitch) {
         app.autoSync = sender.state == .on
     }
 
-    @objc private func toggleLogin(_ sender: NSButton) {
+    @objc private func toggleLogin(_ sender: NSSwitch) {
         do {
             try app.setLaunchAtLogin(sender.state == .on)
         } catch {
@@ -393,42 +629,49 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         }
         refresh()
     }
+}
 
-    @objc private func syncNow(_ sender: NSButton) {
-        Task { await app.syncNow() }
+/// A row; remembers whether it starts with an icon so separators line up
+/// with the text.
+private final class RowView: NSStackView {
+    var hasIcon = false
+}
+
+/// The rounded, slightly lighter box around a group of rows.
+private final class GroupView: NSView {
+    init(content: NSView) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 10
+        layer?.cornerCurve = .continuous
+        layer?.borderWidth = 1
+        content.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(content)
+        NSLayoutConstraint.activate([
+            content.topAnchor.constraint(equalTo: topAnchor),
+            content.bottomAnchor.constraint(equalTo: bottomAnchor),
+            content.leadingAnchor.constraint(equalTo: leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
     }
 
-    // MARK: Devices table
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("not used") }
 
-    func numberOfRows(in tableView: NSTableView) -> Int {
-        app.devices.count
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        layer?.backgroundColor = (dark ? NSColor(white: 1, alpha: 0.05) : NSColor(white: 1, alpha: 0.72)).cgColor
+        layer?.borderColor = (dark ? NSColor(white: 1, alpha: 0.09) : NSColor(white: 0, alpha: 0.07)).cgColor
     }
 
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let device = app.devices[row]
-        let text: String
-        switch tableColumn?.identifier.rawValue {
-        case "name": text = (device.name ?? "Unnamed") + (device.isSelf ? " (this Mac)" : "")
-        case "platform": text = device.platform.capitalized
-        default:
-            text = device.lastSeenAt.map { dateFormatter.string(from: Date(timeIntervalSince1970: $0 / 1000)) } ?? "—"
-        }
-        let cell = NSTextField(labelWithString: text)
-        cell.lineBreakMode = .byTruncatingTail
-        return cell
-    }
-
-    func tableViewSelectionDidChange(_ notification: Notification) {
-        removeDeviceButton.isEnabled = selectedDevice.map { !$0.isSelf } ?? false
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
     }
 }
 
 private final class FlippedView: NSView {
     override var isFlipped: Bool { true }
-}
-
-private extension NSStackView {
-    func addArrangedSubviews(_ views: [NSView]) {
-        views.forEach(addArrangedSubview)
-    }
 }

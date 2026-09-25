@@ -233,6 +233,28 @@ final class AppController {
         startRealtime()
     }
 
+    /// Asks before deleting, in the other browsers, bookmarks that a held-back
+    /// Safari snapshot no longer has.
+    func confirmPendingDeletions() {
+        guard let confirmation = state.deletionConfirmation else { return }
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Delete \(confirmation.count) bookmarks in your other browsers?"
+        let examples = confirmation.sample.prefix(10).map { "• \($0)" }.joined(separator: "\n")
+        alert.informativeText = """
+            These bookmarks are no longer in Safari's bookmarks file. If you deleted them in Safari, \
+            delete them everywhere. If Safari's bookmarks look wrong (for example after iCloud replaced them), \
+            cancel and check Safari first; nothing is deleted until you confirm.
+
+            \(examples)
+            """
+        alert.addButton(withTitle: "Delete Everywhere")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Task { await syncNow(confirmDeletions: true) }
+    }
+
     func newPairingCode() async throws {
         guard let credentials else { throw SyncError.notPaired }
         pairingCode = try await WorkerClient(credentials: credentials).newPairingCode()
@@ -283,8 +305,25 @@ final class AppController {
         credentials = Credentials(workerURL: URL(string: "https://bookmarks.example.workers.dev")!, pairId: "3f2a9c1e-0000-4000-8000-000000000000", deviceId: "d", token: "t")
         pairingCode = PairingCode(code: "K7PM-3QXD", codeExpiresAt: Date().addingTimeInterval(1800).timeIntervalSince1970 * 1000)
         state.lastSyncAt = Date()
-        state.lastStats = SnapshotStats(received: 812, accepted: 810, skipped: 2, inserted: 3, updated: 5, restored: 0, unchanged: 802, deleted: 1)
-        state.waitingForSafariToQuit = 2
+        state.lastStats = SnapshotStats(received: 261, accepted: 259, skipped: 2, inserted: 0, updated: 0, restored: 0, unchanged: 259, deleted: 0)
+        let notices = ProcessInfo.processInfo.arguments.contains("-notices")
+        state.waitingForSafariToQuit = notices ? 2 : 0
+        state.lastError = nil
+        state.deletionConfirmation = notices ? DeletionConfirmation(count: 34, sample: []) : nil
+        let now = Date().timeIntervalSince1970 * 1000
+        let json = """
+            [{"id":"a","platform":"safari","name":"Eric's Mac mini","created_at":0,"last_seen_at":\(now),"self":true},
+             {"id":"b","platform":"firefox","name":"Firefox","created_at":0,"last_seen_at":\(now - 7_200_000),"self":false},
+             {"id":"c","platform":"chrome","name":"Chrome","created_at":0,"last_seen_at":\(now - 300_000),"self":false}]
+            """
+        devices = (try? JSONDecoder().decode([Device].self, from: Data(json.utf8))) ?? []
+        changed()
+    }
+
+    /// In-memory "not connected" state for rendering the setup layout.
+    func debugPreviewUnpaired() {
+        credentials = nil
+        state = SyncState()
         changed()
     }
     #endif
