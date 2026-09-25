@@ -23,10 +23,19 @@
       <input id="code" class="code" placeholder="XXXX-XXXX" maxlength="9" autocomplete="off" spellcheck="false">
       <p class="hint">
         Bookmarks that Safari also has are moved into “Other Bookmarks › Safari Bookmarks”,
-        following Safari’s folders, and duplicates are removed. An existing “Safari Bookmarks”
-        folder is renamed and kept for you to review. A backup of all your bookmarks is saved first.
+        following Safari’s folders, and duplicates are removed. Deleting a bookmark in that folder
+        deletes it in Safari too. An existing “Safari Bookmarks” folder is renamed and kept for you
+        to review. A backup of all your bookmarks is saved first.
       </p>
       <button id="connect" class="primary">Connect</button>
+    </section>
+
+    <section id="pending-deletions" class="confirm hidden" role="alert">
+      <p id="pending-deletions-text"></p>
+      <div class="actions">
+        <button id="confirm-deletions" class="danger">Delete Everywhere</button>
+        <button id="keep-bookmarks" class="secondary">Keep Them</button>
+      </div>
     </section>
 
     <section id="paired" class="hidden">

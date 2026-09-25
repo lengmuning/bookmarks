@@ -18,6 +18,8 @@ export const SAFARI_GUARD = {
   minCount: 20,
   ratio: 0.1,
   sampleSize: 10,
+  // Browser removes of Safari's bookmarks are counted over this window.
+  browserWindowMs: 10 * 60 * 1000,
 } as const;
 
 export const PAIRING = {

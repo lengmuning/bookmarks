@@ -113,6 +113,15 @@ describe("extension engine against a real Worker", { skip: !API || !ADMIN }, () 
     assert.equal(chrome.fake.copiesOf("https://news.example/").length, 0);
     assert.equal(firefox.fake.copiesOf("https://news.example/").length, 0);
 
+    // Firefox deletes GitHub: Chrome removes it, and the Mac is asked to
+    // remove it from Safari.
+    await firefox.fake.ext.bookmarks.remove(only(firefox.fake.copiesOf("https://github.com/"))[3]);
+    await firefox.settle();
+    await chrome.settle();
+    assert.equal(chrome.fake.copiesOf("https://github.com/").length, 0);
+    const deletions = await http("GET", "/v2/safari/pending", { token: mac.body.token });
+    assert.deepEqual(deletions.body.pending_deletions, ["https://github.com/"]);
+
     // The same access key used by Chrome lands in the same group.
     const again = await http("POST", "/v2/connect", { body: { platform: "chrome", access_key: key } });
     assert.equal(again.body.pair_id, mac.body.pair_id);

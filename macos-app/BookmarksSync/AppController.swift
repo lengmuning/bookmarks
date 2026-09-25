@@ -195,14 +195,8 @@ final class AppController {
     private func notifyAbout(_ outcome: SyncOutcome, before: SyncState) {
         if outcome.waitingForSafariToQuit > 0, before.waitingForSafariToQuit == 0 {
             notifier.post(
-                title: "Bookmarks waiting for Safari",
-                body: "\(outcome.waitingForSafariToQuit) bookmark(s) from your other browsers will be added when you quit Safari."
-            )
-        }
-        if outcome.newlyParked > 0 {
-            notifier.post(
-                title: "Safari dropped added bookmarks",
-                body: "\(outcome.newlyParked) bookmark(s) added from other browsers are no longer in Safari. iCloud may have replaced the bookmarks file. They were not deleted elsewhere."
+                title: "Changes waiting for Safari",
+                body: "\(outcome.waitingForSafariToQuit) change(s) from your other browsers will be applied when you quit Safari."
             )
         }
         if let confirmation = outcome.needsConfirmation, before.deletionConfirmation == nil {
@@ -281,14 +275,6 @@ final class AppController {
         fileWatcher.acknowledge()
         changed()
         scheduleSync(after: 0)
-    }
-
-    func retryParkedImports() {
-        guard let engine else { return }
-        Task {
-            await engine.retryParkedImports()
-            await syncNow()
-        }
     }
 
     #if DEBUG

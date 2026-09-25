@@ -9,21 +9,68 @@ public struct PendingImport: Codable, Equatable, Sendable {
 
 public struct SyncState: Codable, Equatable, Sendable {
     public var pendingImports: [PendingImport] = []
-    /// Imports Safari dropped (for example when iCloud replaced the file).
-    /// They are not imported again until the user retries.
-    public var parkedImports: [String] = []
+    /// Imports that disappeared from Safari after Safari rewrote the file:
+    /// deleted in Safari, so deleted in the browsers too. Kept until the
+    /// server has applied them.
+    public var deletedImports: [String] = []
+    /// Raw Safari URL -> canonical URL, from the last snapshot the server
+    /// answered. Used to find bookmarks the server asks to remove.
+    public var canonicalMap: [String: String] = [:]
     /// Modification date of the plist right after this app last wrote it.
     public var lastOwnWrite: Date?
     public var safariLaunchedSinceImport = false
     /// Digest of the last snapshot the server accepted, to skip re-uploads.
     public var lastUploadDigest: String?
     public var deletionConfirmation: DeletionConfirmation?
+    /// Changes from other browsers (additions and deletions) waiting for
+    /// Safari to quit.
     public var waitingForSafariToQuit = 0
     public var lastSyncAt: Date?
     public var lastStats: SnapshotStats?
     public var lastError: String?
 
     public init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case pendingImports, deletedImports, canonicalMap, lastOwnWrite, safariLaunchedSinceImport, lastUploadDigest
+        case deletionConfirmation, waitingForSafariToQuit, lastSyncAt, lastStats, lastError
+        /// Written by 2.0.1 and earlier: imports Safari "dropped", now treated
+        /// as deleted in Safari.
+        case parkedImports
+    }
+
+    // Every field is optional so a state file from an older version keeps
+    // what it has instead of being discarded.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        pendingImports = try c.decodeIfPresent([PendingImport].self, forKey: .pendingImports) ?? []
+        deletedImports = try c.decodeIfPresent([String].self, forKey: .deletedImports) ?? []
+        deletedImports += (try c.decodeIfPresent([String].self, forKey: .parkedImports) ?? []).filter { !deletedImports.contains($0) }
+        canonicalMap = try c.decodeIfPresent([String: String].self, forKey: .canonicalMap) ?? [:]
+        lastOwnWrite = try c.decodeIfPresent(Date.self, forKey: .lastOwnWrite)
+        safariLaunchedSinceImport = try c.decodeIfPresent(Bool.self, forKey: .safariLaunchedSinceImport) ?? false
+        lastUploadDigest = try c.decodeIfPresent(String.self, forKey: .lastUploadDigest)
+        deletionConfirmation = try c.decodeIfPresent(DeletionConfirmation.self, forKey: .deletionConfirmation)
+        waitingForSafariToQuit = try c.decodeIfPresent(Int.self, forKey: .waitingForSafariToQuit) ?? 0
+        lastSyncAt = try c.decodeIfPresent(Date.self, forKey: .lastSyncAt)
+        lastStats = try c.decodeIfPresent(SnapshotStats.self, forKey: .lastStats)
+        lastError = try c.decodeIfPresent(String.self, forKey: .lastError)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(pendingImports, forKey: .pendingImports)
+        try c.encode(deletedImports, forKey: .deletedImports)
+        try c.encode(canonicalMap, forKey: .canonicalMap)
+        try c.encodeIfPresent(lastOwnWrite, forKey: .lastOwnWrite)
+        try c.encode(safariLaunchedSinceImport, forKey: .safariLaunchedSinceImport)
+        try c.encodeIfPresent(lastUploadDigest, forKey: .lastUploadDigest)
+        try c.encodeIfPresent(deletionConfirmation, forKey: .deletionConfirmation)
+        try c.encode(waitingForSafariToQuit, forKey: .waitingForSafariToQuit)
+        try c.encodeIfPresent(lastSyncAt, forKey: .lastSyncAt)
+        try c.encodeIfPresent(lastStats, forKey: .lastStats)
+        try c.encodeIfPresent(lastError, forKey: .lastError)
+    }
 }
 
 public protocol SyncStateStore: Sendable {

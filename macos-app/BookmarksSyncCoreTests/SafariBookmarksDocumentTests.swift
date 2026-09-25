@@ -86,4 +86,22 @@ final class SafariBookmarksDocumentTests: XCTestCase {
         XCTAssertThrowsError(try SafariBookmarksDocument(data: Data("hello".utf8)))
         XCTAssertThrowsError(try SafariBookmarksDocument(data: Fixture.data(["Title": "no children"])))
     }
+
+    func testRemovesBookmarksAndKeepsEverythingElse() throws {
+        var document = try SafariBookmarksDocument(data: Fixture.data())
+        let removed = document.remove(["https://deep.example/", "https://menu.example/", "https://absent.example/"]) { $0 }
+        XCTAssertEqual(removed, ["https://deep.example/", "https://menu.example/"])
+        let reread = try SafariBookmarksDocument(data: document.data())
+        let urls = reread.items().map(\.url)
+        XCTAssertFalse(urls.contains("https://deep.example/"))
+        XCTAssertFalse(urls.contains("https://menu.example/"))
+        XCTAssertTrue(urls.contains("https://news.example/"))
+        let root = Fixture.plist(try document.data())
+        XCTAssertEqual(root["WebBookmarkUUID"] as? String, "ROOT-UUID")
+        XCTAssertNotNil(root["Sync"])
+        let bar = (root["Children"] as? [[String: Any]])?.first { $0["Title"] as? String == "BookmarksBar" }
+        let tech = (bar?["Children"] as? [[String: Any]])?.first { ($0["Title"] as? String)?.contains("Tech") == true }
+        let deep = (tech?["Children"] as? [[String: Any]])?.first { $0["Title"] as? String == "Deep" }
+        XCTAssertNotNil(deep, "the emptied folder stays")
+    }
 }

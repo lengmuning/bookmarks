@@ -25,7 +25,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     private var needsAttention: Bool {
         let state = app.state
-        return !app.isReady || state.lastError != nil || state.deletionConfirmation != nil || !state.parkedImports.isEmpty
+        return !app.isReady || state.lastError != nil || state.deletionConfirmation != nil
     }
 
     private func updateButton() {
@@ -47,14 +47,10 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
             menu.addItem(info(error, color: .systemRed))
         }
         if state.waitingForSafariToQuit > 0 {
-            menu.addItem(info("\(state.waitingForSafariToQuit) bookmark(s) will be added to Safari when you quit Safari"))
+            menu.addItem(info("\(state.waitingForSafariToQuit) change(s) from other browsers will be applied when you quit Safari"))
         }
         if let confirmation = state.deletionConfirmation {
             menu.addItem(action("Confirm Deleting \(confirmation.count) Bookmarks…", #selector(confirmDeletions)))
-        }
-        if !state.parkedImports.isEmpty {
-            menu.addItem(info("\(state.parkedImports.count) added bookmark(s) were dropped by Safari"))
-            menu.addItem(action("Add Them to Safari Again", #selector(retryParked)))
         }
 
         menu.addItem(.separator())
@@ -95,10 +91,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         app.showSettings()
     }
 
-    @objc private func retryParked() {
-        app.retryParkedImports()
-    }
-
     @objc private func confirmDeletions() {
         guard let confirmation = app.state.deletionConfirmation else { return }
         NSApp.activate()
@@ -108,7 +100,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         let examples = confirmation.sample.prefix(10).map { "• \($0)" }.joined(separator: "\n")
         alert.informativeText = """
             These bookmarks are no longer in Safari's bookmarks file. If you deleted them in Safari, \
-            delete them everywhere. If Safari's bookmarks look wrong (for example after an iCloud problem), \
+            delete them everywhere. If Safari's bookmarks look wrong (for example after iCloud replaced them), \
             cancel and check Safari first; nothing is deleted until you confirm.
 
             \(examples)

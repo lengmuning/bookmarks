@@ -97,6 +97,32 @@ public struct SafariBookmarksDocument {
         return added
     }
 
+    /// Removes, from every folder, the bookmarks whose URL maps through
+    /// `canonical` into `urls` (bookmarks deleted in another browser). Folders
+    /// and everything else stay. Returns the canonical URLs that were removed.
+    @discardableResult
+    public mutating func remove(_ urls: Set<String>, canonical: (String) -> String) -> Set<String> {
+        guard !urls.isEmpty else { return [] }
+        var removed = Set<String>()
+        func prune(_ node: [String: Any]) -> [String: Any] {
+            guard let children = node["Children"] as? [Any] else { return node }
+            var node = node
+            node["Children"] = children.compactMap { item -> Any? in
+                guard let child = item as? [String: Any] else { return item }
+                if (child["WebBookmarkType"] as? String) == "WebBookmarkTypeLeaf", let url = child["URLString"] as? String {
+                    let key = canonical(url)
+                    guard urls.contains(key) else { return child }
+                    removed.insert(key)
+                    return nil
+                }
+                return Self.isFolder(child) ? prune(child) : child
+            }
+            return node
+        }
+        root = prune(root)
+        return removed
+    }
+
     static func placement(for folderPath: [String]) -> (top: String, rest: [String]) {
         guard let first = folderPath.first else { return (fallbackTopLevel, []) }
         if specialFolders.contains(where: { $0.name == first }) {

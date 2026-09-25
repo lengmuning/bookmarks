@@ -6,11 +6,15 @@ Chrome/Firefox extensions (`extensions-shared/`) and the macOS app
 
 ## Roles
 
-- **Safari** (the macOS app) is the authority. A sync group has at most one
-  active Safari device.
-- **Browsers** (Chrome, Firefox) are replicas. They can add bookmarks, but they
-  cannot move, rename or delete a bookmark that Safari owns: such changes are
-  rejected and the browser puts the bookmark back.
+- **Safari** (the macOS app) is the authority for placement. A sync group has
+  at most one active Safari device.
+- **Browsers** (Chrome, Firefox) can add bookmarks and delete any bookmark,
+  Safari's included. They cannot move or rename a bookmark that Safari owns:
+  such changes are rejected and the browser puts the bookmark back.
+- **Deletes go both ways.** Deleted in Safari: deleted in every browser.
+  Deleted in a browser: deleted in the other browsers and removed from
+  `Bookmarks.plist` by the app. Large deletes on either side wait for the user
+  to confirm.
 
 ## Identity
 
@@ -61,23 +65,45 @@ apply.
 | create / update | owner `safari`, different title or folder | `rejected`, state = Safari's placement |
 | create / update | owner `browser` | update (last writer wins) |
 | remove | none or tombstone | `noop` |
-| remove | owner `safari` | `rejected`, state = row (browser restores it) |
-| remove | owner `browser` | tombstone |
+| remove | row Safari has (owner `safari`, or an import Safari holds) | tombstone with `safari_delete` (the app removes it from the plist) |
+| remove | same, but held by the guard below | `rejected`, reason `mass_delete`, state = row (browser restores it) |
+| remove | owner `browser`, not in Safari | tombstone |
+
+A create of a URL whose tombstone still has `safari_delete` restores it as
+usual (the rule above) and cancels the removal from Safari.
+
+**Browser delete guard.** Removes of bookmarks Safari has are counted per group
+over 10 minutes, across requests. If that count exceeds 20 and 10% of the rows
+Safari has, the request's removes of Safari's bookmarks are all rejected with
+reason `mass_delete` and the response carries `needs_confirmation: {count,
+sample}`. The extension puts the bookmarks back, shows a badge and asks in its
+popup; confirming resends the removes with `confirm_deletions: true` (which
+also resets the count).
 
 ## Safari snapshot (`POST /v2/safari/snapshot`)
 
-The app sends every bookmark in `Bookmarks.plist` plus `unconfirmed_imports`
-(URLs it wrote into the plist that Safari has not yet been seen keeping).
+The app sends every bookmark in `Bookmarks.plist`, `unconfirmed_imports` (URLs
+it wrote into the plist that Safari has not yet been seen keeping) and
+`deleted_imports` (such URLs that disappeared after Safari rewrote the file:
+the user deleted them in Safari).
 
+- URL in the snapshot whose tombstone has `safari_delete`: still waiting for
+  the app to remove it; stays deleted.
 - URL in the snapshot, not unconfirmed: owner becomes `safari`; title and
   folder are taken from Safari; a tombstone is restored.
 - URL in `unconfirmed_imports`: left untouched (still owner `browser`).
-- Safari-owned row missing from the snapshot: deleted in Safari, tombstoned.
+- Safari-owned row missing from the snapshot, or a row in `deleted_imports`:
+  deleted in Safari, tombstoned.
+- A `safari_delete` tombstone missing from the snapshot: the app removed it;
+  the flag is cleared. If Safari has the URL again later (re-added, or brought
+  back by iCloud) it is restored like any Safari bookmark.
 - **Mass-delete guard**: if the snapshot is empty while Safari owns rows, or
   it would delete more than 20 rows and more than 10% of Safari's rows, nothing
   is deleted and `needs_confirmation` is returned. The app asks the user and
   resends with `confirm_deletions: true`.
 - Response `pending_imports`: active browser-owned rows not present in Safari.
+- Response `pending_deletions`: canonical URLs of `safari_delete` tombstones,
+  for the app to remove from the plist (also in `GET /v2/safari/pending`).
 
 ## Browser placement (applying server state locally)
 
@@ -116,9 +142,22 @@ uploads it as usual.
   plist format (binary/XML) is kept.
 - Imported URLs stay in `unconfirmed_imports` until a later snapshot, taken
   after Safari itself rewrote the plist, still contains them. If such a
-  snapshot no longer contains them (for example iCloud replaced the file), the
-  app parks them instead of treating that as a delete, and shows them in the
-  menu.
+  snapshot no longer contains them, they were deleted in Safari: the app sends
+  them in `deleted_imports` (the guard applies). This cannot be told apart
+  from iCloud replacing the file, which then also deletes them.
+
+## Safari removal (browser deletes out of the plist)
+
+- Same conditions as imports: only while Safari is not running, after a backup,
+  keeping the file format and every key the app does not know.
+- The app maps each plist URL to its canonical form with the `canonical_map`
+  of its last snapshot and removes every leaf, in any folder (Reading List
+  included), whose canonical URL is in `pending_deletions`. Folders stay.
+- The file is read back; if a removed URL is still there, the original is
+  restored. The next snapshot no longer has the URLs, which completes the
+  deletes.
+- Removing a bookmark from the plist does not tell iCloud: Safari may bring it
+  back from iCloud, and it then counts as a Safari bookmark again.
 
 ## Access control
 
@@ -189,15 +228,23 @@ their own row in their own Durable Object.
 | POST | `/v2/admin/keys` | admin (`{label, max_bookmarks}`) |
 | GET | `/v2/admin/keys` | admin |
 | PATCH | `/v2/admin/keys/{id}` | admin (`{label?, max_bookmarks?}`) |
-| POST | `/v2/admin/keys/{id}/reset` | admin (returns the new key once) |
+| POST | `/v2/admin/keys/{id}/reset` | admin (returns the new key) |
+| POST | `/v2/admin/keys/{id}/reveal` | admin (returns the stored key, `409 key_not_viewable` if none) |
 | DELETE | `/v2/admin/keys/{id}` | admin (revokes the key, disables its group) |
+| POST | `/v2/admin/keys/{id}/delete` | admin (revoked keys only: deletes the key and its group's data) |
 | GET | `/v2/admin/groups/{pair_id}` | admin (usage) |
 | POST | `/v2/admin/groups/{pair_id}/disable` | admin |
 | DELETE | `/v2/admin/groups/{pair_id}` | admin (deletes all its data) |
 
 Admin calls use `Authorization: Bearer <ADMIN_KEY>` and return 404 when
 `ADMIN_KEY` is not set. `GET /v2/admin/keys` includes each group's usage
-(bookmarks, deletion records, devices, last activity, storage).
+(bookmarks, deletion records, devices, last activity, storage) and each key's
+`key_hint` (`sbk_1a2b…9f0e`) and `viewable`.
+
+Issued keys are stored as a SHA-256 hash for checking and, since 2.2.0, also
+encrypted with AES-GCM under a key derived from `ADMIN_KEY` (HKDF), so the
+admin can see them again. Keys issued earlier, or before `ADMIN_KEY` changed,
+cannot be shown; resetting them issues one that can.
 
 The `/admin` page (files in `worker/public/admin`) signs in once with
 `ADMIN_KEY` at `POST /admin/api/login` and gets a 12-hour session cookie

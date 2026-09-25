@@ -253,6 +253,8 @@ dialog > form, dialog > .dialog-body { padding: 22px 22px 18px; }
 }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
+.key-fact { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.key-fact .link-btn { padding: 2px 6px; }
 
 /* ------------------------------------------------------------------- toast */
 

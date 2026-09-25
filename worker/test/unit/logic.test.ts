@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyBrowserOps, applySafariSnapshot, pendingImports } from "../../src/v2/logic";
+import { applyBrowserOps, applySafariSnapshot, pendingDeletions, pendingImports } from "../../src/v2/logic";
 import { MemoryStore } from "./memory-store";
 
 const NOW = 1_700_000_000_000;
@@ -10,13 +10,16 @@ function bm(url: string, folderPath: string[], title = url, index = 0) {
   return { url, title, folderPath, index };
 }
 
-function snapshot(store: MemoryStore, items: unknown[], unconfirmed: unknown[] = [], confirm = false) {
-  return applySafariSnapshot(store, items, unconfirmed, confirm, "safari-device", NOW);
+function snapshot(store: MemoryStore, items: unknown[], unconfirmed: unknown[] = [], confirm = false, deletedImports: unknown[] = []) {
+  return applySafariSnapshot(store, items, unconfirmed, confirm, "safari-device", NOW, undefined, deletedImports);
 }
 
-function ops(store: MemoryStore, list: unknown[], baseCursor = store.seq) {
-  return applyBrowserOps(store, list, baseCursor, "chrome-device", NOW);
+function ops(store: MemoryStore, list: unknown[], baseCursor = store.seq, confirm = false, recentSafariDeletes = 0) {
+  return applyBrowserOps(store, list, baseCursor, "chrome-device", NOW, undefined, { confirm, recentSafariDeletes });
 }
+
+const sites = (n: number, folder: string[] = ["Favorites"]) =>
+  Array.from({ length: n }, (_, i) => bm(`https://site${i}.example/`, folder));
 
 let store: MemoryStore;
 beforeEach(() => {
@@ -86,8 +89,6 @@ describe("browser ops", () => {
     const renamed = ops(store, [{ op: "update", url: A, title: "Renamed", folderPath: ["Favorites", "Tech"] }]);
     expect(renamed.results[0].status).toBe("rejected");
 
-    const removed = ops(store, [{ op: "remove", url: A }]);
-    expect(removed.results[0]).toMatchObject({ status: "rejected", reason: "safari_authority" });
     expect(store.row(A)).toMatchObject({ removed: false, folderPath: ["Favorites", "Tech"], title: "Safari title" });
   });
 
@@ -122,6 +123,78 @@ describe("browser ops", () => {
     expect(results.map(r => r.status)).toEqual(["invalid", "invalid", "invalid", "invalid"]);
     expect(changed).toBe(false);
     expect(store.rows.size).toBe(0);
+  });
+});
+
+describe("browser deletes of Safari's bookmarks", () => {
+  it("delete the bookmark everywhere and queue its removal from Safari", () => {
+    snapshot(store, [bm(A, ["Favorites"]), bm(B, ["Favorites"])]);
+    const removed = ops(store, [{ op: "remove", url: A }]);
+    expect(removed.results[0]).toEqual({ url: A, status: "applied" });
+    expect(removed.safariDeletes).toBe(1);
+    expect(store.row(A)).toMatchObject({ removed: true, safariDelete: true, inSafari: false, seq: 3 });
+    expect(pendingDeletions(store)).toEqual([A]);
+
+    // Safari still has it until the app edits the plist: not restored.
+    const before = snapshot(store, [bm(A, ["Favorites"]), bm(B, ["Favorites"])]);
+    expect(before.stats).toMatchObject({ restored: 0, unchanged: 2 });
+    expect(store.row(A).removed).toBe(true);
+
+    // The app removed it: done.
+    snapshot(store, [bm(B, ["Favorites"])]);
+    expect(store.row(A)).toMatchObject({ removed: true, safariDelete: false });
+    expect(pendingDeletions(store)).toEqual([]);
+
+    // Seen in Safari again later (re-added there, or brought back by iCloud).
+    expect(snapshot(store, [bm(A, ["Favorites"]), bm(B, ["Favorites"])]).stats.restored).toBe(1);
+  });
+
+  it("also removes an import that Safari has but not yet confirmed", () => {
+    ops(store, [{ op: "create", url: B, title: "B", folderPath: [] }]);
+    snapshot(store, [bm(B, [])], [B]);
+    ops(store, [{ op: "remove", url: B }]);
+    expect(store.row(B)).toMatchObject({ removed: true, safariDelete: true });
+    expect(pendingDeletions(store)).toEqual([B]);
+  });
+
+  it("cancel the pending removal when a browser adds the bookmark back", () => {
+    snapshot(store, [bm(A, ["Favorites"])]);
+    ops(store, [{ op: "remove", url: A }]);
+    const readded = ops(store, [{ op: "create", url: A, title: "A", folderPath: ["Favorites"] }]);
+    expect(readded.results[0].status).toBe("applied");
+    expect(store.row(A)).toMatchObject({ removed: false, safariDelete: false });
+    expect(pendingDeletions(store)).toEqual([]);
+  });
+
+  it("hold a large delete back until the browser confirms it", () => {
+    snapshot(store, sites(100));
+    const doomed = sites(100).slice(0, 30).map(s => ({ op: "remove", url: s.url }));
+
+    const held = ops(store, doomed);
+    expect(held.needsConfirmation?.count).toBe(30);
+    expect(held.results.every(r => r.status === "rejected" && r.reason === "mass_delete" && r.state)).toBe(true);
+    expect(store.countActive()).toBe(100);
+
+    const confirmed = ops(store, doomed, store.seq, true);
+    expect(confirmed.needsConfirmation).toBeNull();
+    expect(confirmed.results.every(r => r.status === "applied")).toBe(true);
+    expect(pendingDeletions(store)).toHaveLength(30);
+  });
+
+  it("count earlier deletes of the guard window", () => {
+    snapshot(store, sites(100));
+    const ten = sites(100).slice(0, 10).map(s => ({ op: "remove", url: s.url }));
+    expect(ops(store, ten, store.seq, false, 0).needsConfirmation).toBeNull();
+    const more = sites(100).slice(10, 20).map(s => ({ op: "remove", url: s.url }));
+    expect(ops(store, more, store.seq, false, 15).needsConfirmation?.count).toBe(10);
+  });
+
+  it("never hold deletes of browser bookmarks Safari does not have", () => {
+    ops(store, sites(30, []).map(s => ({ op: "create", url: s.url, folderPath: [] })));
+    const removed = ops(store, sites(30, []).map(s => ({ op: "remove", url: s.url })));
+    expect(removed.needsConfirmation).toBeNull();
+    expect(removed.safariDeletes).toBe(0);
+    expect(pendingDeletions(store)).toEqual([]);
   });
 });
 
@@ -211,7 +284,28 @@ describe("Safari snapshot", () => {
     expect(store.row(B)).toMatchObject({ owner: "safari" });
   });
 
-  it("does not treat a dropped unconfirmed import as a delete", () => {
+  it("deletes an import everywhere once the app reports it was deleted in Safari", () => {
+    snapshot(store, [bm(A, [])]);
+    ops(store, [{ op: "create", url: B, title: "B", folderPath: [] }]);
+    snapshot(store, [bm(A, []), bm(B, [])], [B]);
+    const deleted = snapshot(store, [bm(A, [])], [], false, [B]);
+    expect(deleted.stats.deleted).toBe(1);
+    expect(store.row(B)).toMatchObject({ removed: true, safariDelete: false });
+    expect(pendingImports(store)).toEqual([]);
+  });
+
+  it("counts deleted imports toward the mass-delete guard", () => {
+    snapshot(store, sites(10));
+    const imports = sites(40, ["New"]).map(s => ({ ...s, url: s.url.replace("site", "import") }));
+    ops(store, imports.map(s => ({ op: "create", url: s.url, folderPath: ["New"] })));
+    const all = [...sites(10), ...imports];
+    snapshot(store, all, imports.map(s => s.url));
+    const guarded = snapshot(store, sites(10), [], false, imports.map(s => s.url));
+    expect(guarded.needsConfirmation?.count).toBe(40);
+    expect(store.countActive()).toBe(50);
+  });
+
+  it("does not treat a dropped unconfirmed import as a delete unless the app reports it", () => {
     ops(store, [{ op: "create", url: B, title: "B", folderPath: [] }]);
     snapshot(store, [bm(B, [])], [B]);
     const dropped = snapshot(store, []);

@@ -14,6 +14,9 @@ export interface Row {
   owner: Owner;
   removed: boolean;
   inSafari: boolean;
+  // Deleted in a browser while Safari still had it: the app removes it from
+  // Bookmarks.plist, then the flag is cleared.
+  safariDelete: boolean;
   seq: number;
   updatedAt: number;
   lastActor: string | null;
@@ -24,6 +27,8 @@ export interface Store {
   put(row: Row): void;
   all(): Row[];
   countActive(): number;
+  // Active rows present in the last Safari snapshot.
+  countInSafari(): number;
   currentSeq(): number;
   nextSeq(): number;
 }
@@ -66,10 +71,27 @@ export interface OpResult {
   state?: PublicRow;
 }
 
+export interface DeletionConfirmation {
+  count: number;
+  sample: string[];
+}
+
 export interface BrowserOpsResult {
   results: OpResult[];
   changed: boolean;
+  // Removes of bookmarks Safari has, applied or held back.
+  safariDeletes: number;
+  needsConfirmation: DeletionConfirmation | null;
 }
+
+// `recentSafariDeletes` counts earlier removes of Safari's bookmarks in the
+// guard window, so a large delete sent in several requests is still caught.
+export interface BrowserDeleteGuard {
+  confirm: boolean;
+  recentSafariDeletes: number;
+}
+
+const inSafari = (row: Row) => row.owner === "safari" || row.inSafari;
 
 export function applyBrowserOps(
   store: Store,
@@ -78,10 +100,28 @@ export function applyBrowserOps(
   actor: string,
   now: number,
   maxActive: number = LIMITS.activeBookmarks,
+  guard: BrowserDeleteGuard = { confirm: false, recentSafariDeletes: 0 },
 ): BrowserOpsResult {
   const results: OpResult[] = [];
   let changed = false;
   let active = store.countActive();
+
+  // Removes of bookmarks that Safari has also delete them from Safari, so a
+  // large one waits for the user to confirm it in the browser.
+  const safariTargets: string[] = [];
+  for (const raw of ops) {
+    const op = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+    if (op.op !== "remove") continue;
+    const url = normalizeUrl(op.url);
+    const row = url ? store.get(url) : null;
+    if (url && row && !row.removed && inSafari(row) && !safariTargets.includes(url)) safariTargets.push(url);
+  }
+  const attempted = guard.recentSafariDeletes + safariTargets.length;
+  const held =
+    safariTargets.length > 0 &&
+    !guard.confirm &&
+    attempted > SAFARI_GUARD.minCount &&
+    attempted > SAFARI_GUARD.ratio * store.countInSafari();
 
   const write = (row: Row) => {
     row.seq = store.nextSeq();
@@ -104,9 +144,10 @@ export function applyBrowserOps(
       const row = store.get(url);
       if (!row || row.removed) {
         results.push({ url, status: "noop" });
-      } else if (row.owner === "safari") {
-        results.push({ url, status: "rejected", reason: "safari_authority", state: toPublic(row) });
+      } else if (inSafari(row) && held) {
+        results.push({ url, status: "rejected", reason: "mass_delete", state: toPublic(row) });
       } else {
+        row.safariDelete = inSafari(row);
         row.removed = true;
         row.inSafari = false;
         write(row);
@@ -142,6 +183,7 @@ export function applyBrowserOps(
         owner: "browser",
         removed: false,
         inSafari: false,
+        safariDelete: false,
         seq: 0,
         updatedAt: now,
         lastActor: actor,
@@ -171,7 +213,10 @@ export function applyBrowserOps(
     }
   }
 
-  return { results, changed };
+  const needsConfirmation = held
+    ? { count: safariTargets.length, sample: safariTargets.slice(0, SAFARI_GUARD.sampleSize) }
+    : null;
+  return { results, changed, safariDeletes: safariTargets.length, needsConfirmation };
 }
 
 // ---------------------------------------------------------------------------
@@ -192,10 +237,12 @@ export interface SnapshotResult {
   stats: SnapshotStats;
   canonicalMap: Record<string, string>;
   skippedSample: string[];
-  needsConfirmation: { count: number; sample: string[] } | null;
+  needsConfirmation: DeletionConfirmation | null;
   changed: boolean;
 }
 
+// `deletedImports`: bookmarks the app wrote into the plist for a browser that
+// are gone again after Safari rewrote the file, i.e. deleted in Safari.
 export function applySafariSnapshot(
   store: Store,
   items: unknown[],
@@ -204,6 +251,7 @@ export function applySafariSnapshot(
   actor: string,
   now: number,
   maxActive: number = LIMITS.activeBookmarks,
+  deletedImports: unknown[] = [],
 ): SnapshotResult {
   const stats: SnapshotStats = {
     received: items.length,
@@ -243,6 +291,12 @@ export function applySafariSnapshot(
     if (url) unconfirmed.add(url);
   }
 
+  const vanished = new Set<string>();
+  for (const raw of deletedImports) {
+    const url = normalizeUrl(raw);
+    if (url) vanished.add(url);
+  }
+
   const byUrl = new Map(store.all().map(row => [row.url, row]));
   let active = 0;
   for (const row of byUrl.values()) if (!row.removed) active += 1;
@@ -258,6 +312,12 @@ export function applySafariSnapshot(
 
   for (const item of accepted) {
     const row = byUrl.get(item.url);
+
+    if (row && row.removed && row.safariDelete) {
+      // Deleted in a browser; the app has not removed it from the plist yet.
+      stats.unchanged += 1;
+      continue;
+    }
 
     if (unconfirmed.has(item.url)) {
       // Written into the plist by the app but not yet confirmed: keep the
@@ -283,6 +343,7 @@ export function applySafariSnapshot(
         owner: "safari",
         removed: false,
         inSafari: true,
+        safariDelete: false,
         seq: 0,
         updatedAt: now,
         lastActor: actor,
@@ -301,6 +362,7 @@ export function applySafariSnapshot(
         owner: "safari",
         removed: false,
         inSafari: true,
+        safariDelete: false,
       });
       write(row);
       active += 1;
@@ -325,8 +387,10 @@ export function applySafariSnapshot(
     }
   }
 
-  const safariActive = [...byUrl.values()].filter(row => !row.removed && row.owner === "safari");
-  const toDelete = safariActive.filter(row => !seen.has(row.url));
+  const safariActive = [...byUrl.values()].filter(row => !row.removed && inSafari(row));
+  const toDelete = [...byUrl.values()].filter(
+    row => !row.removed && !seen.has(row.url) && (row.owner === "safari" || vanished.has(row.url)),
+  );
   const guarded =
     toDelete.length > 0 &&
     !confirmDeletions &&
@@ -353,9 +417,23 @@ export function applySafariSnapshot(
       row.inSafari = false;
       store.put(row);
     }
+    // The app removed it from the plist: the browser delete is complete.
+    if (row.removed && row.safariDelete && !seen.has(row.url)) {
+      row.safariDelete = false;
+      store.put(row);
+    }
   }
 
   return { stats, canonicalMap, skippedSample, needsConfirmation, changed };
+}
+
+// URLs the app must remove from Bookmarks.plist (deleted in a browser).
+export function pendingDeletions(store: Store): string[] {
+  return store
+    .all()
+    .filter(row => row.removed && row.safariDelete)
+    .sort((a, b) => a.seq - b.seq)
+    .map(row => row.url);
 }
 
 export function pendingImports(store: Store): PublicRow[] {
