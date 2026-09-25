@@ -175,11 +175,14 @@ describe("after joining", () => {
     assert.equal(server.rows.get("https://github.com/").folderPath.join("/"), "Favorites/Tech");
   });
 
-  it("restores a Safari bookmark the user deletes in the browser", async () => {
-    const { browser } = t;
+  it("deletes a Safari bookmark everywhere when the user deletes it in the browser", async () => {
+    const { browser, server } = t;
     await browser.ext.bookmarks.remove(idOf(browser, "https://news.example/"));
     await t.settle();
-    assert.equal(folderPathOf(browser, "https://news.example/"), "Other bookmarks / Safari Bookmarks / Bookmarks Menu");
+    assert.equal(browser.copiesOf("https://news.example/").length, 0);
+    assert.equal(server.rows.get("https://news.example/").removed, true);
+    assert.equal(server.rows.get("https://news.example/").safariDelete, true, "the Mac removes it from Safari");
+    assert.equal(browser.badge.text, "");
   });
 
   it("uploads, moves and deletes bookmarks added in the browser", async () => {
@@ -270,6 +273,48 @@ describe("after joining", () => {
   });
 });
 
+describe("large deletes", () => {
+  const many = Array.from({ length: 30 }, (_, i) => ({ url: `https://site${i}.example/`, title: `Site ${i}`, folderPath: ["Favorites"] }));
+  let t;
+  beforeEach(async () => {
+    t = setup("chrome");
+    t.server.safariSnapshot(many);
+    assert.equal((await t.core.join(API, "GOOD-CODE")).ok, true);
+    t.advance(60_000);
+  });
+
+  const inRoot = browser => browser.listing().filter(([path]) => path.includes("Safari Bookmarks"));
+
+  it("puts the bookmarks back until the user confirms, then deletes them everywhere", async () => {
+    const { browser, server, core } = t;
+    await browser.ext.bookmarks.removeTree(t.rootId());
+    await t.settle();
+    assert.equal(inRoot(browser).length, 30, "put back");
+    assert.equal(server.rows.get("https://site0.example/").removed, false);
+    assert.equal(browser.store[KEYS.status].pending_deletions.urls.length, 30);
+    assert.equal(browser.badge.text, "!");
+
+    const confirmed = await core.handleMessage({ type: "confirmDeletions" });
+    assert.equal(confirmed.ok, true, confirmed.error);
+    assert.equal(inRoot(browser).length, 0);
+    assert.equal([...server.rows.values()].filter(r => !r.removed).length, 0);
+    assert.equal(server.rows.get("https://site0.example/").safariDelete, true);
+    assert.equal(browser.store[KEYS.status].pending_deletions, null);
+    assert.equal(browser.badge.text, "");
+  });
+
+  it("keeps the bookmarks when the user declines", async () => {
+    const { browser, server, core } = t;
+    await browser.ext.bookmarks.removeTree(t.rootId());
+    await t.settle();
+    assert.equal((await core.handleMessage({ type: "keepBookmarks" })).ok, true);
+    assert.equal(browser.store[KEYS.status].pending_deletions, null);
+    assert.equal(browser.badge.text, "");
+    assert.equal(inRoot(browser).length, 30);
+    assert.equal([...server.rows.values()].filter(r => !r.removed).length, 30);
+  });
+});
+
 describe("server-side recovery", () => {
   let t;
   beforeEach(async () => {
@@ -342,6 +387,7 @@ describe("Firefox", () => {
 
     await browser.ext.bookmarks.removeTree(browser.findFolder(t.rootId(), "Favorites"));
     await t.settle();
-    assert.equal(folderPathOf(browser, "https://github.com/"), "Other Bookmarks / Safari Bookmarks / Favorites", "Safari's bookmark is restored");
+    assert.equal(server.rows.get("https://github.com/").removed, true, "Safari's bookmark is deleted too");
+    assert.equal(server.rows.get("https://github.com/").safariDelete, true);
   });
 });

@@ -6,6 +6,10 @@
 // in the sync group exists exactly once in the browser, under
 // "Other Bookmarks / Safari Bookmarks / <Safari folder path>"; copies found
 // anywhere else in the browser are moved there or removed.
+//
+// Deletes go both ways: removing a bookmark here deletes it everywhere,
+// Safari included. A large delete is put back until the user confirms it in
+// the popup (`pending_deletions` in the status).
 
 (function (root) {
   "use strict";
@@ -121,6 +125,20 @@
     async function setStatus(patch) {
       const status = await load(KEYS.status, {});
       await save(KEYS.status, { ...status, ...patch });
+    }
+
+    // "!" on the toolbar icon while a large delete waits for confirmation.
+    async function updateBadge() {
+      const action = ext.action || ext.browserAction;
+      if (!action || !action.setBadgeText) return;
+      const status = await load(KEYS.status, {});
+      const waiting = Boolean(status.pending_deletions && status.pending_deletions.urls.length);
+      try {
+        await action.setBadgeText({ text: waiting ? "!" : "" });
+        if (waiting && action.setBadgeBackgroundColor) await action.setBadgeBackgroundColor({ color: "#d92d20" });
+      } catch (err) {
+        log.warn("[sync] could not update the badge", err);
+      }
     }
 
     // id -> { u: canonical url, p: parent, s: 1 if the server had it at the
@@ -402,12 +420,15 @@
     }
 
     // ------------------------------------------------------------ server calls
-    async function sendOps(config, ops, baseCursor, stats, indexRef) {
+    async function sendOps(config, ops, baseCursor, stats, indexRef, confirm = false) {
+      const held = [];
       for (let i = 0; i < ops.length; i += OPS_PER_REQUEST) {
         const batch = ops.slice(i, i + OPS_PER_REQUEST);
         let response;
         try {
-          response = await api(config, "POST", "/v2/changes", { base_cursor: baseCursor, ops: batch });
+          const body = { base_cursor: baseCursor, ops: batch };
+          if (confirm) body.confirm_deletions = true;
+          response = await api(config, "POST", "/v2/changes", body);
         } catch (err) {
           if (err instanceof ApiError && err.status >= 400 && err.status < 500 && err.status !== 401 && err.status !== 429) {
             log.warn("[sync] dropping rejected batch", err.status, err.code);
@@ -421,12 +442,53 @@
             if (indexRef.applied && result.url) indexRef.applied.add(result.url);
           }
           if (result.status !== "rejected") continue;
-          stats.rejected += 1;
+          if (result.reason === "mass_delete" && result.url) held.push(result.url);
+          else stats.rejected += 1;
           if (!result.state) continue;
           indexRef.index = indexRef.index || (await buildIndex(config));
           await applyRow(indexRef.index, result.state, stats);
         }
       }
+      if (held.length) await holdDeletions(held);
+    }
+
+    // The server put these bookmarks back; they are deleted only after the
+    // user confirms in the popup.
+    async function holdDeletions(urls) {
+      const status = await load(KEYS.status, {});
+      const previous = (status.pending_deletions && status.pending_deletions.urls) || [];
+      await setStatus({ pending_deletions: { urls: [...new Set([...previous, ...urls])], at: now() } });
+      await updateBadge();
+    }
+
+    function confirmDeletions() {
+      return exclusive(async () => {
+        const config = await getConfig();
+        if (!config || !config.token) return { ok: false, error: "not_paired" };
+        const status = await load(KEYS.status, {});
+        const urls = (status.pending_deletions && status.pending_deletions.urls) || [];
+        const stats = newStats();
+        const ref = { index: null };
+        try {
+          await sendOps(config, urls.map(url => ({ op: "remove", url })), config.cursor || 0, stats, ref, true);
+          await setStatus({ pending_deletions: null });
+          await updateBadge();
+          // The deletes come back as changes and remove the local copies.
+          await pullUnlocked(config, stats, ref);
+          await setStatus({ last_result: stats, last_error: null });
+          return { ok: true, stats };
+        } catch (err) {
+          return { ok: false, error: message(err) };
+        }
+      });
+    }
+
+    function keepBookmarks() {
+      return exclusive(async () => {
+        await setStatus({ pending_deletions: null });
+        await updateBadge();
+        return { ok: true };
+      });
     }
 
     async function flushQueueUnlocked(config, stats, indexRef) {
@@ -635,6 +697,7 @@
         }
         await ext.storage.local.remove([KEYS.config, KEYS.queue, KEYS.ids, KEYS.status]);
         ids = {};
+        await updateBadge();
         return { ok: true };
       });
     }
@@ -893,6 +956,10 @@
           return fullSync();
         case "unpair":
           return unpair();
+        case "confirmDeletions":
+          return confirmDeletions();
+        case "keepBookmarks":
+          return keepBookmarks();
         default:
           return { ok: false, error: "unknown_message" };
       }
@@ -906,6 +973,7 @@
     }
 
     async function start() {
+      await updateBadge();
       const config = await getConfig();
       if (!config || !config.token) return;
       connectWebSocket();
@@ -950,6 +1018,8 @@
       poll,
       statusSummary,
       handleMessage,
+      confirmDeletions,
+      keepBookmarks,
       // exposed for tests
       _events: { onCreated, onChanged, onMoved, onRemoved },
       _idle: () => exclusive(async () => {}),

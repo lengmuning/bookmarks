@@ -4,6 +4,15 @@ import XCTest
 /// Runs the real WorkerClient and SyncEngine against a Worker started by
 /// scripts/e2e.sh (wrangler dev, local only). Skipped unless SYNC_E2E_URL and
 /// SYNC_E2E_ADMIN_KEY are set (pass them to xcodebuild as TEST_RUNNER_…).
+extension SafariBookmarksDocument {
+    /// The plist root after deleting `url`, as Safari would save it.
+    func removingForTest(_ url: String) throws -> [String: Any] {
+        var copy = self
+        copy.remove([url]) { $0 }
+        return Fixture.plist(try copy.data())
+    }
+}
+
 final class EndToEndTests: XCTestCase {
     private var baseURL: URL!
     private var adminKey: String!
@@ -74,6 +83,40 @@ final class EndToEndTests: XCTestCase {
         let (_, snapshot) = try await request("GET", "/v2/snapshot", token: chromeToken)
         let row = (snapshot["bookmarks"] as? [[String: Any]])?.first { $0["url"] as? String == "https://chrome.example/" }
         XCTAssertEqual(row?["owner"] as? String, "safari")
+
+        // Chrome deletes one of Safari's bookmarks: the next sync removes it
+        // from the plist and the delete is complete.
+        let (_, cursorPage) = try await request("GET", "/v2/changes?since=0", token: chromeToken)
+        let cursor = try XCTUnwrap(cursorPage["cursor"] as? Int)
+        let (_, removal) = try await request("POST", "/v2/changes", token: chromeToken, body: [
+            "base_cursor": cursor,
+            "ops": [["op": "remove", "url": "https://menu.example/"]],
+        ])
+        XCTAssertEqual(((removal["results"] as? [[String: Any]])?.first?["status"]) as? String, "applied")
+        let removedRun = try await engine.sync()
+        XCTAssertEqual(removedRun.removedFromSafari, 1)
+        XCTAssertFalse(try SafariBookmarksDocument(data: file.data).items().contains { $0.url == "https://menu.example/" })
+        let (_, afterRemoval) = try await request("GET", "/v2/safari/pending", token: credentials.token)
+        XCTAssertEqual((afterRemoval["pending_deletions"] as? [String]) ?? ["missing"], [])
+
+        // Chrome adds another bookmark; the user deletes it in Safari before
+        // Safari confirmed it: Chrome's copy is deleted too.
+        _ = try await request("POST", "/v2/changes", token: chromeToken, body: [
+            "base_cursor": cursor,
+            "ops": [["op": "create", "url": "https://second.example/", "title": "Second", "folderPath": ["Favorites"]]],
+        ])
+        let importRun = try await engine.sync()
+        XCTAssertEqual(importRun.imported, 1)
+        var withoutSecond = Fixture.plist(file.data)
+        withoutSecond = try SafariBookmarksDocument(data: Fixture.data(withoutSecond)).removingForTest("https://second.example/")
+        file.safariRewrites(withoutSecond)
+        let deleteRun = try await engine.sync()
+        XCTAssertEqual(deleteRun.deletedInSafari, 1)
+        let (_, finalSnapshot) = try await request("GET", "/v2/snapshot", token: chromeToken)
+        let finalUrls = (finalSnapshot["bookmarks"] as? [[String: Any]])?.compactMap { $0["url"] as? String } ?? []
+        XCTAssertFalse(finalUrls.contains("https://second.example/"))
+        XCTAssertFalse(finalUrls.contains("https://menu.example/"))
+        XCTAssertTrue(finalUrls.contains("https://chrome.example/"))
 
         // A second Mac with the same key must confirm before taking over.
         do {

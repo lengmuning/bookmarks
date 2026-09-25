@@ -4,10 +4,11 @@ import {
   DEVICE_SEEN_WRITE_INTERVAL_MS,
   LIMITS,
   Platform,
+  SAFARI_GUARD,
   TOMBSTONE_RETENTION_MS,
   WS,
 } from "./limits";
-import { applyBrowserOps, applySafariSnapshot, pendingImports, Row, Store, toPublic } from "./logic";
+import { applyBrowserOps, applySafariSnapshot, pendingDeletions, pendingImports, Row, Store, toPublic } from "./logic";
 import { randomHex, sha256Hex, timingSafeEqual } from "./token";
 
 // Bodies cross the RPC boundary as JSON text: the router returns them as-is.
@@ -58,6 +59,7 @@ const SCHEMA = [
      owner TEXT NOT NULL,
      removed INTEGER NOT NULL DEFAULT 0,
      in_safari INTEGER NOT NULL DEFAULT 0,
+     safari_delete INTEGER NOT NULL DEFAULT 0,
      seq INTEGER NOT NULL,
      updated_at INTEGER NOT NULL,
      last_actor TEXT
@@ -86,6 +88,7 @@ function rowFromDb(r: Record<string, SqlStorageValue>): Row {
     owner: r.owner === "safari" ? "safari" : "browser",
     removed: Number(r.removed) === 1,
     inSafari: Number(r.in_safari) === 1,
+    safariDelete: Number(r.safari_delete) === 1,
     seq: Number(r.seq),
     updatedAt: Number(r.updated_at),
     lastActor: r.last_actor === null ? null : String(r.last_actor),
@@ -102,11 +105,12 @@ class SqlStore implements Store {
 
   put(row: Row): void {
     this.sql.exec(
-      `INSERT INTO bookmarks (url, title, folder_path, idx, owner, removed, in_safari, seq, updated_at, last_actor)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO bookmarks (url, title, folder_path, idx, owner, removed, in_safari, safari_delete, seq, updated_at, last_actor)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(url) DO UPDATE SET
          title = excluded.title, folder_path = excluded.folder_path, idx = excluded.idx,
          owner = excluded.owner, removed = excluded.removed, in_safari = excluded.in_safari,
+         safari_delete = excluded.safari_delete,
          seq = excluded.seq, updated_at = excluded.updated_at, last_actor = excluded.last_actor`,
       row.url,
       row.title,
@@ -115,6 +119,7 @@ class SqlStore implements Store {
       row.owner,
       row.removed ? 1 : 0,
       row.inSafari ? 1 : 0,
+      row.safariDelete ? 1 : 0,
       row.seq,
       row.updatedAt,
       row.lastActor,
@@ -127,6 +132,12 @@ class SqlStore implements Store {
 
   countActive(): number {
     return Number(this.sql.exec("SELECT COUNT(*) AS n FROM bookmarks WHERE removed = 0").one().n);
+  }
+
+  countInSafari(): number {
+    return Number(
+      this.sql.exec("SELECT COUNT(*) AS n FROM bookmarks WHERE removed = 0 AND (owner = 'safari' OR in_safari = 1)").one().n,
+    );
   }
 
   currentSeq(): number {
@@ -160,10 +171,24 @@ export class SyncGroup extends DurableObject<Env> {
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(WS.ping, WS.pong));
   }
 
+  private schemaChecked = false;
+
+  // Schema 2 adds bookmarks.safari_delete (two-way deletes).
+  private migrate(): void {
+    this.schemaChecked = true;
+    if (this.meta("schema") !== "1") return;
+    this.ctx.storage.transactionSync(() => {
+      this.sql.exec("ALTER TABLE bookmarks ADD COLUMN safari_delete INTEGER NOT NULL DEFAULT 0");
+      this.setMeta("schema", "2");
+    });
+  }
+
   // Schema is created only by init(), so a request for a random pair id never
-  // writes storage.
+  // writes storage. Groups created by an older version are migrated here.
   private initialized(): boolean {
-    return this.sql.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'meta'").toArray().length > 0;
+    const exists = this.sql.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'meta'").toArray().length > 0;
+    if (exists && !this.schemaChecked) this.migrate();
+    return exists;
   }
 
   private meta(key: string): string | null {
@@ -222,7 +247,7 @@ export class SyncGroup extends DurableObject<Env> {
       this.setMeta("pair_id", input.pairId);
       this.setMeta("seq", "0");
       this.setMeta("created_at", String(now));
-      this.setMeta("schema", "1");
+      this.setMeta("schema", "2");
       this.setMeta("max_bookmarks", String(input.maxBookmarks));
       this.insertDevice(deviceId, input.platform, input.name, tokenHash, now);
     });
@@ -326,15 +351,28 @@ export class SyncGroup extends DurableObject<Env> {
     if (body.ops.length > LIMITS.opsPerRequest) return fail(413, "too_many_ops");
     const baseCursor = typeof body.base_cursor === "number" && body.base_cursor >= 0 ? Math.floor(body.base_cursor) : 0;
     if (baseCursor > 0 && baseCursor < this.horizon()) return fail(409, "cursor_expired");
+    const confirm = body.confirm_deletions === true;
     const now = Date.now();
-    const result = this.ctx.storage.transactionSync(() =>
-      applyBrowserOps(this.store, body.ops as unknown[], baseCursor, auth.deviceId, now, this.maxActive()),
-    );
+    const result = this.ctx.storage.transactionSync(() => {
+      // Removes of Safari's bookmarks in the last few minutes, across requests.
+      const windowStart = Number(this.meta("browser_deletes_since") ?? 0);
+      const inWindow = now - windowStart < SAFARI_GUARD.browserWindowMs;
+      const recent = inWindow ? Number(this.meta("browser_deletes") ?? 0) : 0;
+      const applied = applyBrowserOps(this.store, body.ops as unknown[], baseCursor, auth.deviceId, now, this.maxActive(), {
+        confirm,
+        recentSafariDeletes: recent,
+      });
+      if (applied.safariDeletes > 0 || confirm) {
+        if (!inWindow) this.setMeta("browser_deletes_since", String(now));
+        this.setMeta("browser_deletes", String(confirm ? 0 : recent + applied.safariDeletes));
+      }
+      return applied;
+    });
     if (result.changed) {
       this.notify();
       await this.scheduleCompaction();
     }
-    return ok({ cursor: this.store.currentSeq(), results: result.results });
+    return ok({ cursor: this.store.currentSeq(), results: result.results, needs_confirmation: result.needsConfirmation });
   }
 
   async safariSnapshot(auth: DeviceAuth, bodyText: string): Promise<RpcResult> {
@@ -345,8 +383,9 @@ export class SyncGroup extends DurableObject<Env> {
     if (!body || !Array.isArray(body.bookmarks)) return fail(400, "invalid_body");
     if (body.bookmarks.length > LIMITS.snapshotItems) return fail(413, "too_many_bookmarks");
     const unconfirmed = Array.isArray(body.unconfirmed_imports) ? body.unconfirmed_imports : [];
+    const deletedImports = Array.isArray(body.deleted_imports) ? body.deleted_imports : [];
     const now = Date.now();
-    const { result, pending, cursor } = this.ctx.storage.transactionSync(() => {
+    const { result, pending, deletions, cursor } = this.ctx.storage.transactionSync(() => {
       const result = applySafariSnapshot(
         this.store,
         body.bookmarks as unknown[],
@@ -355,8 +394,14 @@ export class SyncGroup extends DurableObject<Env> {
         auth.deviceId,
         now,
         this.maxActive(),
+        deletedImports,
       );
-      return { result, pending: pendingImports(this.store), cursor: this.store.currentSeq() };
+      return {
+        result,
+        pending: pendingImports(this.store),
+        deletions: pendingDeletions(this.store),
+        cursor: this.store.currentSeq(),
+      };
     });
     if (result.changed) {
       this.notify();
@@ -369,6 +414,7 @@ export class SyncGroup extends DurableObject<Env> {
       skipped_sample: result.skippedSample,
       needs_confirmation: result.needsConfirmation,
       pending_imports: pending,
+      pending_deletions: deletions,
     });
   }
 
@@ -376,7 +422,11 @@ export class SyncGroup extends DurableObject<Env> {
     const device = await this.gate(auth);
     if (isResult(device)) return device;
     if (device.platform !== "safari") return fail(403, "safari_only");
-    return ok({ cursor: this.store.currentSeq(), pending_imports: pendingImports(this.store) });
+    return ok({
+      cursor: this.store.currentSeq(),
+      pending_imports: pendingImports(this.store),
+      pending_deletions: pendingDeletions(this.store),
+    });
   }
 
   async devices(auth: DeviceAuth): Promise<RpcResult> {
@@ -444,6 +494,7 @@ export class SyncGroup extends DurableObject<Env> {
       cursor: this.store.currentSeq(),
       bookmarks: count("SELECT COUNT(*) AS n FROM bookmarks WHERE removed = 0"),
       tombstones: count("SELECT COUNT(*) AS n FROM bookmarks WHERE removed = 1"),
+      pending_safari_deletions: count("SELECT COUNT(*) AS n FROM bookmarks WHERE removed = 1 AND safari_delete = 1"),
       devices: this.sql
         .exec("SELECT id, platform, name, created_at, last_seen_at FROM devices WHERE revoked_at IS NULL ORDER BY created_at")
         .toArray(),

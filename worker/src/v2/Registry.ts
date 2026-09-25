@@ -1,7 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
+import { configuredSecret } from "./access";
 import { ACCESS, ADMIN, LIMITS, PAIRING } from "./limits";
 import { normalizePairingCode } from "./normalize";
 import { randomHex, sha256Hex } from "./token";
+import { keyHint, openKey, sealKey } from "./vault";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -15,6 +17,7 @@ export type ConnectResult =
   | { ok: false; reason: "rate_limited" | "invalid_access_key" | "group_disabled" };
 
 export type ResetKeyResult = { ok: true; id: string; key: string } | { ok: false; reason: "not_found" | "revoked" };
+export type RevealKeyResult = { ok: true; key: string } | { ok: false; reason: "not_found" | "not_viewable" };
 
 export interface GroupInfo {
   pair_id: string;
@@ -28,8 +31,15 @@ export interface AccessKeyInfo {
   max_bookmarks: number;
   created_at: number;
   revoked_at: number | null;
+  // First and last characters, to recognise the key; null for keys created
+  // before keys were stored.
+  key_hint: string | null;
+  // A copy is stored and can be shown on the admin page.
+  viewable: boolean;
   group: GroupInfo | null;
 }
+
+const KEY_COLUMNS = "id, label, max_bookmarks, created_at, revoked_at, key_hint, key_enc";
 
 // The master ACCESS_KEY is recorded under this key id.
 const MASTER_KEY_ID = "master";
@@ -78,6 +88,10 @@ export class Registry extends DurableObject<Env> {
       created_at INTEGER NOT NULL,
       disabled_at INTEGER
     )`);
+    // Added after the first release: an encrypted copy of issued keys.
+    const columns = new Set(this.sql.exec("PRAGMA table_info(access_keys)").toArray().map(c => String(c.name)));
+    if (!columns.has("key_enc")) this.sql.exec("ALTER TABLE access_keys ADD COLUMN key_enc TEXT");
+    if (!columns.has("key_hint")) this.sql.exec("ALTER TABLE access_keys ADD COLUMN key_hint TEXT");
     this.sql.exec(`CREATE TABLE IF NOT EXISTS admin_sessions (
       token_hash TEXT PRIMARY KEY,
       admin_fp TEXT NOT NULL,
@@ -183,17 +197,24 @@ export class Registry extends DurableObject<Env> {
 
   // -------------------------------------------------------------------- admin
 
+  private async sealed(key: string): Promise<string | null> {
+    const admin = configuredSecret(this.env.ADMIN_KEY);
+    return admin ? sealKey(key, admin) : null;
+  }
+
   async createKey(input: { label: string | null; maxBookmarks: number }): Promise<{ id: string; key: string }> {
     const id = crypto.randomUUID();
     const key = newAccessKey();
     const keyHash = await sha256Hex(key);
     this.sql.exec(
-      "INSERT INTO access_keys (id, key_hash, label, max_bookmarks, created_at) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO access_keys (id, key_hash, label, max_bookmarks, created_at, key_hint, key_enc) VALUES (?, ?, ?, ?, ?, ?, ?)",
       id,
       keyHash,
       input.label,
       input.maxBookmarks,
       Date.now(),
+      keyHint(key),
+      await this.sealed(key),
     );
     return { id, key };
   }
@@ -215,13 +236,15 @@ export class Registry extends DurableObject<Env> {
       max_bookmarks: Number(row.max_bookmarks),
       created_at: Number(row.created_at),
       revoked_at: row.revoked_at === null ? null : Number(row.revoked_at),
+      key_hint: row.key_hint === null ? null : String(row.key_hint),
+      viewable: row.key_enc !== null,
       group: this.groupOf(String(row.id)),
     };
   }
 
   async listKeys(): Promise<{ keys: AccessKeyInfo[]; master_group: GroupInfo | null }> {
     const keys = this.sql
-      .exec("SELECT id, label, max_bookmarks, created_at, revoked_at FROM access_keys ORDER BY created_at")
+      .exec(`SELECT ${KEY_COLUMNS} FROM access_keys ORDER BY created_at`)
       .toArray()
       .map(row => this.keyInfo(row));
     return { keys, master_group: this.groupOf(MASTER_KEY_ID) };
@@ -234,7 +257,7 @@ export class Registry extends DurableObject<Env> {
     if (patch.maxBookmarks !== undefined) {
       this.sql.exec("UPDATE access_keys SET max_bookmarks = ? WHERE id = ?", patch.maxBookmarks, id);
     }
-    const row = this.sql.exec("SELECT id, label, max_bookmarks, created_at, revoked_at FROM access_keys WHERE id = ?", id).one();
+    const row = this.sql.exec(`SELECT ${KEY_COLUMNS} FROM access_keys WHERE id = ?`, id).one();
     return this.keyInfo(row);
   }
 
@@ -245,8 +268,40 @@ export class Registry extends DurableObject<Env> {
     if (!rows.length) return { ok: false, reason: "not_found" };
     if (rows[0].revoked_at !== null) return { ok: false, reason: "revoked" };
     const key = newAccessKey();
-    this.sql.exec("UPDATE access_keys SET key_hash = ? WHERE id = ?", await sha256Hex(key), id);
+    this.sql.exec(
+      "UPDATE access_keys SET key_hash = ?, key_hint = ?, key_enc = ? WHERE id = ?",
+      await sha256Hex(key),
+      keyHint(key),
+      await this.sealed(key),
+      id,
+    );
     return { ok: true, id, key };
+  }
+
+  async revealKey(id: string): Promise<RevealKeyResult> {
+    const rows = this.sql.exec("SELECT key_enc FROM access_keys WHERE id = ?", id).toArray();
+    if (!rows.length) return { ok: false, reason: "not_found" };
+    const admin = configuredSecret(this.env.ADMIN_KEY);
+    const key = rows[0].key_enc !== null && admin ? await openKey(String(rows[0].key_enc), admin) : null;
+    return key ? { ok: true, key } : { ok: false, reason: "not_viewable" };
+  }
+
+  // A key can be deleted once revoked; returns its groups for the caller to
+  // purge before calling deleteKey.
+  async keyForDeletion(id: string): Promise<{ found: boolean; revoked: boolean; pairIds: string[] }> {
+    const rows = this.sql.exec("SELECT revoked_at FROM access_keys WHERE id = ?", id).toArray();
+    if (!rows.length) return { found: false, revoked: false, pairIds: [] };
+    const pairIds = this.sql
+      .exec("SELECT pair_id FROM groups WHERE key_id = ?", id)
+      .toArray()
+      .map(r => String(r.pair_id));
+    return { found: true, revoked: rows[0].revoked_at !== null, pairIds };
+  }
+
+  async deleteKey(id: string): Promise<void> {
+    this.sql.exec("DELETE FROM codes WHERE pair_id IN (SELECT pair_id FROM groups WHERE key_id = ?)", id);
+    this.sql.exec("DELETE FROM groups WHERE key_id = ?", id);
+    this.sql.exec("DELETE FROM access_keys WHERE id = ? AND revoked_at IS NOT NULL", id);
   }
 
   // Revokes the key and returns its group so the caller can disable it.

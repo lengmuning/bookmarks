@@ -23,6 +23,10 @@ export class MemoryStore implements Store {
     return [...this.rows.values()].filter(row => !row.removed).length;
   }
 
+  countInSafari(): number {
+    return [...this.rows.values()].filter(row => !row.removed && (row.owner === "safari" || row.inSafari)).length;
+  }
+
   currentSeq(): number {
     return this.seq;
   }

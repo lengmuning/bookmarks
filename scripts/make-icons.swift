@@ -115,7 +115,7 @@ try json.write(to: URL(fileURLWithPath: "\(appIcon)/Contents.json"))
 // Browser extensions: toolbar sizes fill the square, larger ones keep the
 // transparent margin the Chrome Web Store asks for (16 of 128 px per side).
 for browser in ["chrome", "firefox"] {
-    for pixels in [16, 32, 48, 96, 128] {
+    for pixels in [16, 32, 48, 64, 96, 128] {
         let padding: CGFloat = pixels <= 32 ? 0 : 0.125
         write(render(pixels: pixels, style: .browser, padding: padding), to: "\(browser)-extension/icons/icon\(pixels).png")
     }

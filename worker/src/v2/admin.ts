@@ -119,6 +119,22 @@ async function adminApi(request: Request, env: Env, rawPath: string): Promise<Re
       if (!reset.ok) return reset.reason === "not_found" ? json(404, { error: "key_not_found" }) : json(409, { error: "key_revoked" });
       return json(200, { id: reset.id, key: reset.key });
     }
+    if (method === "POST" && action === "reveal") {
+      const revealed = await reg.revealKey(id);
+      if (!revealed.ok) {
+        return revealed.reason === "not_found" ? json(404, { error: "key_not_found" }) : json(409, { error: "key_not_viewable" });
+      }
+      return json(200, { id, key: revealed.key });
+    }
+    // Deletes a revoked user: the key record and all of its group's data.
+    if (method === "POST" && action === "delete") {
+      const target = await reg.keyForDeletion(id);
+      if (!target.found) return json(404, { error: "key_not_found" });
+      if (!target.revoked) return json(409, { error: "key_active" });
+      await Promise.all(target.pairIds.map(pairId => group(env, pairId).purge()));
+      await reg.deleteKey(id);
+      return json(200, { deleted: id, deleted_groups: target.pairIds });
+    }
     if (method === "DELETE" && action === undefined) {
       const revoked = await reg.revokeKey(id);
       if (!revoked.found) return json(404, { error: "key_not_found" });

@@ -1,3 +1,4 @@
+import { runInDurableObject } from "cloudflare:test";
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { handleAdminBearer, handleAdminPage } from "../../src/v2/admin";
@@ -234,3 +235,60 @@ describe("key management", () => {
     expect(entry).toMatchObject({ group: null, usage: null, revoked_at: null });
   });
 });
+
+describe("viewing and deleting users", () => {
+  const find = async (cookie: string, id: string) =>
+    (await send("GET", "/admin/api/keys", { cookie })).body.keys.find((k: { id: string }) => k.id === id);
+
+  it("shows a hint of each key and the full key on request", async () => {
+    const cookie = await signIn();
+    const created = await send("POST", "/admin/api/keys", { cookie, body: { label: "Frank" } });
+    const key: string = created.body.key;
+    expect(await find(cookie, created.body.id)).toMatchObject({ key_hint: `${key.slice(0, 8)}…${key.slice(-4)}`, viewable: true });
+
+    const revealed = await send("POST", `/admin/api/keys/${created.body.id}/reveal`, { cookie });
+    expect(revealed.status).toBe(200);
+    expect(revealed.body.key).toBe(key);
+
+    const reset = await send("POST", `/admin/api/keys/${created.body.id}/reset`, { cookie });
+    expect((await send("POST", `/admin/api/keys/${created.body.id}/reveal`, { cookie })).body.key).toBe(reset.body.key);
+    expect((await find(cookie, created.body.id)).key_hint).toBe(`${reset.body.key.slice(0, 8)}…${reset.body.key.slice(-4)}`);
+
+    expect((await send("POST", `/admin/api/keys/${crypto.randomUUID()}/reveal`, { cookie })).status).toBe(404);
+    expect((await send("POST", `/admin/api/keys/${created.body.id}/reveal`)).status).toBe(401);
+  });
+
+  it("cannot show keys that were created before copies were stored", async () => {
+    const cookie = await signIn();
+    const created = await send("POST", "/admin/api/keys", { cookie, body: { label: "Old" } });
+    const registry = env.REGISTRY.get(env.REGISTRY.idFromName("global"));
+    await runInDurableObject(registry, (_instance, state) => {
+      state.storage.sql.exec("UPDATE access_keys SET key_enc = NULL, key_hint = NULL WHERE id = ?", created.body.id);
+    });
+    expect(await find(cookie, created.body.id)).toMatchObject({ key_hint: null, viewable: false });
+    const revealed = await send("POST", `/admin/api/keys/${created.body.id}/reveal`, { cookie });
+    expect(revealed.status).toBe(409);
+    expect(revealed.body.error).toBe("key_not_viewable");
+  });
+
+  it("deletes a user only after revoking the key", async () => {
+    const cookie = await signIn();
+    const created = await send("POST", "/admin/api/keys", { cookie, body: { label: "Grace" } });
+    const mac = await connectSafari(created.body.key);
+
+    const early = await send("POST", `/admin/api/keys/${created.body.id}/delete`, { cookie });
+    expect(early.status).toBe(409);
+    expect(early.body.error).toBe("key_active");
+
+    await send("DELETE", `/admin/api/keys/${created.body.id}`, { cookie });
+    const deleted = await send("POST", `/admin/api/keys/${created.body.id}/delete`, { cookie });
+    expect(deleted.status).toBe(200);
+    expect(deleted.body.deleted_groups).toEqual([mac.body.pair_id]);
+
+    expect(await find(cookie, created.body.id)).toBeUndefined();
+    expect((await send("GET", "/v2/snapshot", { origin: null, bearer: mac.body.token })).status).toBe(401);
+    expect((await connectSafari(created.body.key)).body.error).toBe("invalid_access_key");
+    expect((await send("POST", `/admin/api/keys/${created.body.id}/delete`, { cookie })).status).toBe(404);
+  });
+});
+

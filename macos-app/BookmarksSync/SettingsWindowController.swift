@@ -264,13 +264,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             lines.append("Safari has \(stats.accepted) bookmarks. Last upload: \(stats.inserted + stats.restored) new, \(stats.updated) changed, \(stats.deleted) deleted.")
         }
         if state.waitingForSafariToQuit > 0 {
-            lines.append("\(state.waitingForSafariToQuit) bookmark(s) from other browsers will be added when you quit Safari.")
+            lines.append("\(state.waitingForSafariToQuit) change(s) from other browsers will be applied to Safari when you quit Safari.")
         }
         if !state.pendingImports.isEmpty {
             lines.append("\(state.pendingImports.count) added bookmark(s) are waiting for Safari to keep them.")
-        }
-        if !state.parkedImports.isEmpty {
-            lines.append("\(state.parkedImports.count) added bookmark(s) were dropped by Safari; use the menu to add them again.")
         }
         if let confirmation = state.deletionConfirmation {
             lines.append("\(confirmation.count) bookmarks are missing from Safari and wait for your confirmation in the menu before they are deleted elsewhere.")

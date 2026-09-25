@@ -32,7 +32,7 @@
       colCreated: "创建时间",
       colActions: "操作",
       empty: "还没有用户。点击“新建 Access Key”给第一个用户发放 Key。",
-      footnote: "每个 Access Key 对应一个用户和一个同步组，用户之间的数据互相隔离。Access Key 只在创建或重置时显示一次。",
+      footnote: "每个 Access Key 对应一个用户和一个同步组，用户之间的数据互相隔离。点“管理”可以查看用户的 Access Key。",
       masterName: "你的主 Key",
       masterSub: "ACCESS_KEY · Worker Secret",
       masterTag: "主",
@@ -48,6 +48,7 @@
       reset: "重置 Key",
       revoke: "吊销",
       deleteData: "删除数据",
+      deleteUser: "删除用户",
       label: "备注名",
       labelPlaceholder: "例如：张三",
       limit: "书签上限",
@@ -62,7 +63,7 @@
       copyInstructions: "复制设置说明",
       accessKey: "Access Key",
       instructions: "发给用户的设置说明",
-      keyOnce: "这个 Access Key 只显示这一次，关闭后无法再查看。请现在复制并发给用户。",
+      keyOnce: "请复制并发给用户。之后也可以在这个用户的“管理”里再次查看。",
       keyCreatedTitle: "已创建 Access Key：{name}",
       keyResetTitle: "已重置 Access Key：{name}",
       instructionsText:
@@ -83,6 +84,10 @@
       deleteMessageActive:
         "服务器上这个用户的书签记录和设备列表会被永久删除，所有设备停止同步。用户电脑和浏览器里的书签不受影响。" +
         "Access Key 仍然有效，用户重新连接后会从头开始同步。",
+      deleteUserTitle: "删除用户 {name}？",
+      deleteUserMessage:
+        "这个用户的 Access Key 和服务器上的全部同步数据会被永久删除，无法恢复。用户电脑和浏览器里的书签不受影响。",
+      userDeleted: "已删除用户",
       typeToConfirm: "输入“{word}”确认",
       confirmWord: "删除",
       deleteForever: "永久删除",
@@ -91,6 +96,12 @@
       revoked: "已吊销",
       deleted: "已删除",
       factKeyId: "Key ID",
+      factKey: "Access Key",
+      showKey: "显示",
+      keyNotViewable: "无法查看：这个 Key 是在查看功能加入之前创建的，或者 ADMIN_KEY 已更换。点“重置 Key”会生成一个可以查看的新 Key。",
+      keyNotViewableRevoked: "无法查看（这个 Key 是在查看功能加入之前创建的，或者 ADMIN_KEY 已更换）。",
+      factPendingSafari: "等待从 Safari 删除",
+      factPendingSafariValue: "{count} 条（在浏览器里删除，Mac 会在 Safari 没运行时从 Safari 删除）",
       factGroup: "同步组 ID",
       factNoGroup: "尚未创建（用户还没有连接过）",
       factRevoked: "吊销时间",
@@ -116,6 +127,8 @@
       errLimits: "书签上限必须是 1 到 50000 之间的整数。",
       errRevoked: "这个 Key 已吊销，不能重置。",
       errKeyNotFound: "找不到这个 Key，请刷新页面。",
+      errKeyActive: "请先吊销这个 Key，再删除用户。",
+      errNotViewable: "这个 Key 无法查看，重置后可以查看新 Key。",
       errGroupNotFound: "这个同步组已经不存在，请刷新页面。",
       errNetwork: "无法连接服务器，请检查网络。",
       errGeneric: "操作失败（{code}）。",
@@ -150,7 +163,7 @@
       empty: "No users yet. Click “New Access Key” to issue the first one.",
       footnote:
         "Each access key belongs to one user and one sync group; users never see each other's data. " +
-        "A key is shown only when it is created or reset.",
+        "Open Manage to see a user's access key.",
       masterName: "Your master key",
       masterSub: "ACCESS_KEY · Worker secret",
       masterTag: "Master",
@@ -166,6 +179,7 @@
       reset: "Reset Key",
       revoke: "Revoke",
       deleteData: "Delete Data",
+      deleteUser: "Delete User",
       label: "Name",
       labelPlaceholder: "For example: Alex",
       limit: "Bookmark limit",
@@ -180,7 +194,7 @@
       copyInstructions: "Copy Setup Instructions",
       accessKey: "Access key",
       instructions: "Setup instructions for the user",
-      keyOnce: "This access key is shown only once. Copy it now and send it to the user.",
+      keyOnce: "Copy it and send it to the user. You can see it again later under Manage.",
       keyCreatedTitle: "Access key created: {name}",
       keyResetTitle: "Access key reset: {name}",
       instructionsText:
@@ -209,6 +223,11 @@
       deleteMessageActive:
         "This user's bookmark records and device list are permanently deleted from the server, and all devices stop syncing. " +
         "Bookmarks on their computers and browsers are not touched. The access key stays valid; connecting again starts from scratch.",
+      deleteUserTitle: "Delete the user {name}?",
+      deleteUserMessage:
+        "This user's access key and all of their sync data on the server are deleted for good. " +
+        "Bookmarks on their computers and browsers are not touched.",
+      userDeleted: "User deleted",
       typeToConfirm: "Type “{word}” to confirm",
       confirmWord: "DELETE",
       deleteForever: "Delete Forever",
@@ -217,6 +236,13 @@
       revoked: "Revoked",
       deleted: "Deleted",
       factKeyId: "Key ID",
+      factKey: "Access key",
+      showKey: "Show",
+      keyNotViewable:
+        "Can't be shown: this key was created before keys could be viewed, or ADMIN_KEY changed since. Reset Key issues a new key that can be shown.",
+      keyNotViewableRevoked: "Can't be shown (created before keys could be viewed, or ADMIN_KEY changed since).",
+      factPendingSafari: "Waiting to leave Safari",
+      factPendingSafariValue: "{count} (deleted in a browser; the Mac removes them from Safari while Safari is closed)",
       factGroup: "Sync group ID",
       factNoGroup: "Not created yet (the user hasn't connected)",
       factRevoked: "Revoked",
@@ -242,6 +268,8 @@
       errLimits: "The bookmark limit must be a whole number from 1 to 50,000.",
       errRevoked: "This key is revoked and cannot be reset.",
       errKeyNotFound: "This key no longer exists. Reload the page.",
+      errKeyActive: "Revoke the key before deleting the user.",
+      errNotViewable: "This key can't be shown. Reset it to get a new key that can.",
       errGroupNotFound: "This sync group no longer exists. Reload the page.",
       errNetwork: "Can't reach the server. Check your connection.",
       errGeneric: "Something went wrong ({code}).",
@@ -358,7 +386,8 @@
     try {
       await navigator.clipboard.writeText(text);
     } catch {
-      fallbackField.select();
+      if (typeof fallbackField.select === "function") fallbackField.select();
+      else window.getSelection().selectAllChildren(fallbackField);
       document.execCommand("copy");
     }
     toast(t("copied"));
@@ -410,6 +439,8 @@
       invalid_limits: "errLimits",
       key_revoked: "errRevoked",
       key_not_found: "errKeyNotFound",
+      key_active: "errKeyActive",
+      key_not_viewable: "errNotViewable",
       group_not_found: "errGroupNotFound",
       network: "errNetwork",
     };
@@ -513,7 +544,7 @@
     const list = entries();
     const rows = list.map(entry => {
       const [statusClass, statusText] = statusOf(entry);
-      const sub = entry.master ? t("masterSub") : `ID ${entry.key.id.slice(0, 8)}`;
+      const sub = entry.master ? t("masterSub") : entry.key.key_hint || `ID ${entry.key.id.slice(0, 8)}`;
       const lastSeen = entry.usage ? entry.usage.last_seen_at : null;
       return h(
         "tr",
@@ -522,7 +553,7 @@
           "td",
           { class: "user-cell" },
           h("div", { class: "user-name" }, nameOf(entry), entry.master ? h("span", { class: "badge master", text: t("masterTag") }) : null),
-          h("div", { class: "user-sub", text: sub }),
+          h("div", { class: entry.master || !entry.key.key_hint ? "user-sub" : "user-sub mono", text: sub }),
         ),
         h("td", null, h("span", { class: `badge ${statusClass}`, text: statusText })),
         usageCell(entry),
@@ -730,6 +761,42 @@
 
   // ----------------------------------------------------------------- details
 
+  // The key's hint, with a button that fetches and shows the whole key.
+  function keyFact(entry) {
+    if (!entry.key.viewable) {
+      return h("span", { class: "muted", text: t(entry.key.revoked_at ? "keyNotViewableRevoked" : "keyNotViewable") });
+    }
+    const value = h("span", { class: "mono key-value", text: entry.key.key_hint });
+    const button = h("button", { type: "button", class: "link-btn", text: t("showKey") });
+    let key = null;
+    button.addEventListener("click", async () => {
+      if (key) return copyText(key, value);
+      try {
+        key = (await api("POST", `/keys/${entry.key.id}/reveal`)).key;
+      } catch (err) {
+        if (err.code !== "session_expired") toast(errorText(err), true);
+        return;
+      }
+      value.textContent = key;
+      button.textContent = t("copy");
+    });
+    return h("span", { class: "key-fact" }, value, button);
+  }
+
+  function confirmDeleteUser(entry) {
+    confirmAction({
+      title: t("deleteUserTitle", { name: nameOf(entry) }),
+      message: t("deleteUserMessage"),
+      okText: t("deleteUser"),
+      typed: t("confirmWord"),
+      run: async () => {
+        await api("POST", `/keys/${entry.key.id}/delete`);
+        toast(t("userDeleted"));
+        load();
+      },
+    });
+  }
+
   async function openManage(entry) {
     let stats = null;
     if (entry.group) {
@@ -748,13 +815,19 @@
 
     const mono = text => h("span", { class: "mono", text });
     const facts = [];
-    if (!entry.master) facts.push([t("factKeyId"), mono(entry.key.id)]);
+    if (!entry.master) {
+      facts.push([t("factKey"), keyFact(entry)]);
+      facts.push([t("factKeyId"), mono(entry.key.id)]);
+    }
     facts.push([t("factCreated"), fmtDate(entry.createdAt)]);
     const used = stats ? fmtNumber(stats.bookmarks) : t("none");
     facts.push([t("factBookmarks"), `${used} / ${fmtNumber(stats ? stats.max_bookmarks : entry.limit)}`]);
     if (stats) {
       facts.push([t("factTombstones"), t("factTombstonesValue", { count: fmtNumber(stats.tombstones) })]);
       facts.push([t("factStorage"), fmtBytes(stats.storage_bytes)]);
+      if (stats.pending_safari_deletions > 0) {
+        facts.push([t("factPendingSafari"), t("factPendingSafariValue", { count: fmtNumber(stats.pending_safari_deletions) })]);
+      }
     }
     facts.push([t("factGroup"), entry.group ? mono(entry.group.pair_id) : t("factNoGroup")]);
     if (!entry.master && entry.key.revoked_at) facts.push([t("factRevoked"), fmtDate(entry.key.revoked_at)]);
@@ -792,10 +865,13 @@
     const danger = [];
     const safe = [];
     if (!entry.master) {
-      const revoked = !!entry.key.revoked_at;
-      if (!revoked) danger.push(action("revoke", "btn btn-danger-quiet", confirmRevoke));
-      if (entry.group) danger.push(action("deleteData", "btn btn-danger-quiet", confirmDelete));
-      if (!revoked) safe.push(action("reset", "btn", confirmReset));
+      if (entry.key.revoked_at) {
+        danger.push(action("deleteUser", "btn btn-danger-quiet", confirmDeleteUser));
+      } else {
+        danger.push(action("revoke", "btn btn-danger-quiet", confirmRevoke));
+        if (entry.group) danger.push(action("deleteData", "btn btn-danger-quiet", confirmDelete));
+        safe.push(action("reset", "btn", confirmReset));
+      }
       safe.push(action("edit", "btn", openEdit));
     }
     $("details-danger").replaceChildren(...danger);

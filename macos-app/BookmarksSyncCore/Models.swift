@@ -43,11 +43,14 @@ public struct SnapshotItem: Codable, Equatable, Sendable {
 public struct SafariSnapshotRequest: Encodable, Equatable, Sendable {
     public let bookmarks: [SnapshotItem]
     public let unconfirmedImports: [String]
+    /// Imports deleted in Safari: the server deletes them in the browsers.
+    public var deletedImports: [String] = []
     public let confirmDeletions: Bool
 
     enum CodingKeys: String, CodingKey {
         case bookmarks
         case unconfirmedImports = "unconfirmed_imports"
+        case deletedImports = "deleted_imports"
         case confirmDeletions = "confirm_deletions"
     }
 }
@@ -86,6 +89,9 @@ public struct SafariSnapshotResponse: Decodable, Equatable, Sendable {
     public let skippedSample: [String]
     public let needsConfirmation: DeletionConfirmation?
     public let pendingImports: [RemoteBookmark]
+    /// Canonical URLs deleted in a browser, to remove from Safari. Absent
+    /// from Workers older than two-way deletes.
+    public var pendingDeletions: [String]? = nil
 
     enum CodingKeys: String, CodingKey {
         case cursor, stats
@@ -93,16 +99,19 @@ public struct SafariSnapshotResponse: Decodable, Equatable, Sendable {
         case skippedSample = "skipped_sample"
         case needsConfirmation = "needs_confirmation"
         case pendingImports = "pending_imports"
+        case pendingDeletions = "pending_deletions"
     }
 }
 
 public struct PendingResponse: Decodable, Equatable, Sendable {
     public let cursor: Int
     public let pendingImports: [RemoteBookmark]
+    public var pendingDeletions: [String]? = nil
 
     enum CodingKeys: String, CodingKey {
         case cursor
         case pendingImports = "pending_imports"
+        case pendingDeletions = "pending_deletions"
     }
 }
 

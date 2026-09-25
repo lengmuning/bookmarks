@@ -113,8 +113,15 @@ export function createFakeBrowser(flavor = "chrome") {
   };
   for (const name of Object.keys(listeners)) bookmarks[name] = { addListener: fn => listeners[name].push(fn) };
 
+  const badge = { text: "" };
   const ext = {
     bookmarks,
+    action: {
+      async setBadgeText({ text }) {
+        badge.text = text;
+      },
+      async setBadgeBackgroundColor() {},
+    },
     storage: {
       local: {
         async get(keys) {
@@ -141,6 +148,7 @@ export function createFakeBrowser(flavor = "chrome") {
   return {
     ext,
     store,
+    badge,
     ids: { root: layout.root, other, bar },
     // Setup helpers that do not fire events.
     seedFolder: (parentId, title, dateAdded = 0) => add(String(nextId++), parentId, title, undefined, dateAdded),
@@ -181,15 +189,21 @@ export function createFakeServer() {
   const pub = r => ({ url: r.url, title: r.title, folderPath: r.folderPath, index: null, owner: r.owner, removed: r.removed, seq: r.seq });
   const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
-  function applyOps(baseCursor, ops) {
-    return ops.map(op => {
+  // Same rules as the Worker, with the mass-delete guard per request only.
+  function applyOps(baseCursor, ops, confirm) {
+    const safariRows = [...rows.values()].filter(r => !r.removed && r.owner === "safari");
+    const targets = new Set(
+      ops.filter(op => op.op === "remove").map(op => canonicalUrl(op.url)).filter(url => rows.get(url)?.owner === "safari" && !rows.get(url).removed),
+    );
+    const held = !confirm && targets.size > 20 && targets.size > 0.1 * safariRows.length;
+    const results = ops.map(op => {
       const url = canonicalUrl(op.url);
       if (!url) return { url: null, status: "invalid" };
       const row = rows.get(url);
       if (op.op === "remove") {
         if (!row || row.removed) return { url, status: "noop" };
-        if (row.owner === "safari") return { url, status: "rejected", reason: "safari_authority", state: pub(row) };
-        Object.assign(row, { removed: true, seq: nextSeq() });
+        if (row.owner === "safari" && held) return { url, status: "rejected", reason: "mass_delete", state: pub(row) };
+        Object.assign(row, { removed: true, safariDelete: row.owner === "safari", seq: nextSeq() });
         return { url, status: "applied" };
       }
       const t = title(op.title);
@@ -208,6 +222,7 @@ export function createFakeServer() {
       Object.assign(row, { title: t, folderPath: p, seq: nextSeq() });
       return { url, status: "applied" };
     });
+    return { results, needs_confirmation: held ? { count: targets.size, sample: [...targets].slice(0, 10) } : null };
   }
 
   function handle(method, url, body) {
@@ -231,7 +246,7 @@ export function createFakeServer() {
     }
     if (method === "POST" && url.pathname === "/v2/changes") {
       if (body.base_cursor > 0 && body.base_cursor < horizon) return [409, { error: "cursor_expired" }];
-      return [200, { cursor: seq, results: applyOps(body.base_cursor, body.ops) }];
+      return [200, { cursor: seq, ...applyOps(body.base_cursor, body.ops, body.confirm_deletions === true) }];
     }
     if (method === "DELETE" && url.pathname === "/v2/devices/self") return [200, { revoked: "d1" }];
     return [404, { error: "not_found" }];

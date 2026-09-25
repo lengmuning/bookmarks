@@ -38,6 +38,12 @@ async function refresh() {
   show("paired", state.paired);
   show("backup", Boolean(state.backupCreatedAt));
 
+  const held = (status.pending_deletions && status.pending_deletions.urls.length) || 0;
+  show("pending-deletions", state.paired && held > 0);
+  $("pending-deletions-text").textContent =
+    `You deleted ${held} bookmark${held === 1 ? "" : "s"} that Safari also has, so ${held === 1 ? "it was" : "they were"} ` +
+    "put back. Delete Everywhere removes them from Safari and all your browsers.";
+
   const badge = $("badge");
   badge.className = "badge";
   if (!state.paired) {
@@ -93,6 +99,12 @@ $("disconnect").addEventListener("click", () => {
   if (!confirm("Disconnect this browser from the sync group? Your bookmarks stay where they are.")) return;
   run("disconnect", "Disconnecting…", { type: "unpair" });
 });
+
+$("confirm-deletions").addEventListener("click", () =>
+  run("confirm-deletions", "Deleting…", { type: "confirmDeletions" }),
+);
+
+$("keep-bookmarks").addEventListener("click", () => run("keep-bookmarks", "Keeping…", { type: "keepBookmarks" }));
 
 $("backup").addEventListener("click", async () => {
   const { sync_v2_backup: backup } = await ext.storage.local.get("sync_v2_backup");

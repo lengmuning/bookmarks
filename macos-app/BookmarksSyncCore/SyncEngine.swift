@@ -8,8 +8,11 @@ public protocol SafariActivity: Sendable {
 public struct SyncOutcome: Equatable, Sendable {
     public var uploaded = false
     public var imported = 0
+    /// Bookmarks deleted in another browser and removed from Safari.
+    public var removedFromSafari = 0
+    /// Bookmarks from other browsers that the user deleted in Safari.
+    public var deletedInSafari = 0
     public var waitingForSafariToQuit = 0
-    public var newlyParked = 0
     public var needsConfirmation: DeletionConfirmation?
     public var stats: SnapshotStats?
 
@@ -17,8 +20,8 @@ public struct SyncOutcome: Equatable, Sendable {
 }
 
 /// One sync cycle for Safari (docs/SYNC-V2.md): upload the plist as a
-/// snapshot, then write bookmarks added in other browsers into the plist while
-/// Safari is not running. Runs are serialized.
+/// snapshot, then apply what changed in other browsers (additions and
+/// deletions) to the plist while Safari is not running. Runs are serialized.
 public actor SyncEngine {
     /// An import still present this long after writing it counts as kept even
     /// if Safari never rewrote the file.
@@ -55,12 +58,6 @@ public actor SyncEngine {
     public func noteSafariLaunched() {
         guard !state.pendingImports.isEmpty, !state.safariLaunchedSinceImport else { return }
         state.safariLaunchedSinceImport = true
-        store.save(state)
-    }
-
-    /// Lets parked imports be written into Safari again on the next sync.
-    public func retryParkedImports() {
-        state.parkedImports = []
         store.save(state)
     }
 
@@ -105,99 +102,122 @@ public actor SyncEngine {
         let items = document.items()
         let present = Set(items.map(\.url))
 
-        outcome.newlyParked = reconcilePendingImports(present: present, modified: modified)
-        let unconfirmed = state.pendingImports.map(\.url)
-        let digest = Self.digest(data, unconfirmed)
+        outcome.deletedInSafari = reconcilePendingImports(present: present, modified: modified)
 
-        var pending: [RemoteBookmark]
-        var canonicalMap: [String: String] = [:]
-        if digest == state.lastUploadDigest, state.deletionConfirmation == nil, !confirmDeletions {
-            pending = try await api.safariPending().pendingImports
-        } else {
-            let response = try await api.safariSnapshot(
-                SafariSnapshotRequest(bookmarks: items, unconfirmedImports: unconfirmed, confirmDeletions: confirmDeletions)
-            )
-            record(response, digest: digest)
+        var pending: [RemoteBookmark] = []
+        var deletions: [String] = []
+        var skipUpload = digest(data) == state.lastUploadDigest && state.deletionConfirmation == nil && !confirmDeletions
+        if skipUpload {
+            let quick = try await api.safariPending()
+            pending = quick.pendingImports
+            // Removing bookmarks needs the canonical map of a fresh snapshot.
+            if !(quick.pendingDeletions ?? []).isEmpty { skipUpload = false }
+        }
+        if !skipUpload {
+            let response = try await upload(items, data: data, confirmDeletions: confirmDeletions)
             outcome.uploaded = true
             outcome.stats = response.stats
             outcome.needsConfirmation = response.needsConfirmation
             pending = response.pendingImports
-            canonicalMap = response.canonicalMap
+            deletions = response.pendingDeletions ?? []
         }
 
-        let presentCanonical = Set(present.map { canonicalMap[$0] ?? $0 })
-        let parked = Set(state.parkedImports)
-        let toImport = pending.filter { !presentCanonical.contains($0.url) && !parked.contains($0.url) }
-        guard !toImport.isEmpty else {
+        let map = state.canonicalMap
+        let canonical: (String) -> String = { map[$0] ?? $0 }
+        let presentCanonical = Set(present.map(canonical))
+        let deletedHere = Set(state.deletedImports)
+        let toImport = pending.filter { !presentCanonical.contains($0.url) && !deletedHere.contains($0.url) }
+        let toRemove = Set(deletions).intersection(presentCanonical)
+        guard !toImport.isEmpty || !toRemove.isEmpty else {
             state.waitingForSafariToQuit = 0
             return outcome
         }
         guard !safari.isSafariRunning else {
-            state.waitingForSafariToQuit = toImport.count
-            outcome.waitingForSafariToQuit = toImport.count
+            state.waitingForSafariToQuit = toImport.count + toRemove.count
+            outcome.waitingForSafariToQuit = state.waitingForSafariToQuit
             return outcome
         }
 
         var updated = document
         let added = updated.add(toImport, now: now())
+        let removed = updated.remove(toRemove, canonical: canonical)
         let newData = try updated.data()
         _ = try file.backup(data)
         guard !safari.isSafariRunning else {
-            state.waitingForSafariToQuit = toImport.count
-            outcome.waitingForSafariToQuit = toImport.count
+            state.waitingForSafariToQuit = toImport.count + toRemove.count
+            outcome.waitingForSafariToQuit = state.waitingForSafariToQuit
             return outcome
         }
         let written = try file.write(newData)
-        try verifyWrite(added: added, original: data)
+        try verifyWrite(added: added, removed: removed, canonical: canonical, original: data)
 
         state.lastOwnWrite = written
-        state.safariLaunchedSinceImport = false
+        if !added.isEmpty { state.safariLaunchedSinceImport = false }
+        state.pendingImports.removeAll { removed.contains(canonical($0.url)) }
         state.pendingImports += added.map { PendingImport(url: $0, importedAt: now()) }
         state.waitingForSafariToQuit = 0
         outcome.imported = added.count
+        outcome.removedFromSafari = removed.count
 
-        // Tell the server that Safari has them now, still owned by the browsers.
-        let nowUnconfirmed = state.pendingImports.map(\.url)
-        let response = try await api.safariSnapshot(
-            SafariSnapshotRequest(bookmarks: updated.items(), unconfirmedImports: nowUnconfirmed, confirmDeletions: false)
-        )
-        record(response, digest: Self.digest(newData, nowUnconfirmed))
+        // Tell the server what Safari has now: the imports (still owned by the
+        // browsers) and the removals, which completes those deletes.
+        let response = try await upload(updated.items(), data: newData, confirmDeletions: false)
         outcome.needsConfirmation = response.needsConfirmation
         return outcome
     }
 
-    private func record(_ response: SafariSnapshotResponse, digest: String) {
+    private func upload(_ items: [SnapshotItem], data: Data, confirmDeletions: Bool) async throws -> SafariSnapshotResponse {
+        let sentDeletions = state.deletedImports
+        let response = try await api.safariSnapshot(
+            SafariSnapshotRequest(
+                bookmarks: items,
+                unconfirmedImports: state.pendingImports.map(\.url),
+                deletedImports: sentDeletions,
+                confirmDeletions: confirmDeletions
+            )
+        )
+        state.canonicalMap = response.canonicalMap
         state.lastStats = response.stats
         state.deletionConfirmation = response.needsConfirmation
-        // A snapshot held back by the delete guard is sent again next time.
-        state.lastUploadDigest = response.needsConfirmation == nil ? digest : nil
+        if response.needsConfirmation == nil {
+            state.deletedImports.removeAll { sentDeletions.contains($0) }
+            state.lastUploadDigest = digest(data)
+        } else {
+            // A snapshot held back by the delete guard is sent again next time.
+            state.lastUploadDigest = nil
+        }
+        return response
     }
 
-    private func verifyWrite(added: [String], original: Data) throws {
+    private func digest(_ data: Data) -> String {
+        Self.digest(data, state.pendingImports.map(\.url), state.deletedImports)
+    }
+
+    private func verifyWrite(added: [String], removed: Set<String>, canonical: (String) -> String, original: Data) throws {
         let reread = try? file.read()
         let urls = reread.flatMap { try? SafariBookmarksDocument(data: $0.data) }.map { Set($0.items().map(\.url)) }
-        guard let urls, urls.isSuperset(of: added) else {
+        guard let urls, urls.isSuperset(of: added), urls.allSatisfy({ !removed.contains(canonical($0)) }) else {
             _ = try? file.write(original)
             throw SyncError.bookmarksWrite("Safari's bookmarks did not read back correctly after writing, so the previous version was restored.")
         }
     }
 
-    /// Decides which earlier imports Safari kept (confirmed), dropped (parked)
-    /// or has not looked at yet (still unconfirmed). Returns how many were
-    /// parked now.
+    /// Decides which earlier imports Safari kept (confirmed), lost (deleted in
+    /// Safari, to be deleted in the browsers too) or has not looked at yet
+    /// (still unconfirmed). Returns how many were found deleted now.
     private func reconcilePendingImports(present: Set<String>, modified: Date) -> Int {
         guard !state.pendingImports.isEmpty else { return 0 }
         let rewrittenSinceImport = state.lastOwnWrite.map { abs(modified.timeIntervalSince($0)) > Self.modificationTolerance } ?? true
         var stillPending: [PendingImport] = []
-        var newlyParked = 0
+        var deleted = 0
         for item in state.pendingImports {
             if present.contains(item.url) {
                 let old = now().timeIntervalSince(item.importedAt) > Self.confirmationFallback
                 if !(rewrittenSinceImport || old) { stillPending.append(item) }
             } else if rewrittenSinceImport || state.safariLaunchedSinceImport {
-                if !state.parkedImports.contains(item.url) {
-                    state.parkedImports.append(item.url)
-                    newlyParked += 1
+                if !state.deletedImports.contains(item.url) {
+                    state.deletedImports.append(item.url)
+                    deleted += 1
                 }
             } else {
                 stillPending.append(item)
@@ -205,13 +225,16 @@ public actor SyncEngine {
         }
         state.pendingImports = stillPending
         if stillPending.isEmpty { state.safariLaunchedSinceImport = false }
-        return newlyParked
+        return deleted
     }
 
-    static func digest(_ data: Data, _ unconfirmed: [String]) -> String {
+    static func digest(_ data: Data, _ unconfirmed: [String], _ deletedImports: [String] = []) -> String {
         var hasher = SHA256()
         hasher.update(data: data)
         hasher.update(data: Data(unconfirmed.sorted().joined(separator: "\n").utf8))
+        if !deletedImports.isEmpty {
+            hasher.update(data: Data(("\u{0}" + deletedImports.sorted().joined(separator: "\n")).utf8))
+        }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 }
