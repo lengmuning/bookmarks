@@ -1,4 +1,5 @@
 import Foundation
+import IOKit
 
 /// Reads and writes Safari's Bookmarks.plist.
 public protocol BookmarksFileStore: Sendable {
@@ -6,8 +7,19 @@ public protocol BookmarksFileStore: Sendable {
     func modificationDate() throws -> Date
     /// Replaces the file and returns its new modification date.
     func write(_ data: Data) throws -> Date
+    /// Replaces the file only if it still holds `expected`, under the lock
+    /// Safari and its iCloud sync agent use. Returns nil without writing when
+    /// the lock is taken or the file changed since `expected` was read.
+    func replace(_ expected: Data, with data: Data) throws -> Date?
     /// Saves a copy of `data` outside Safari's folder and returns where.
     func backup(_ data: Data) throws -> URL
+}
+
+public extension BookmarksFileStore {
+    func replace(_ expected: Data, with data: Data) throws -> Date? {
+        guard try read().data == expected else { return nil }
+        return try write(data)
+    }
 }
 
 /// The sandbox only lets the app open what the user picked in an open panel.
@@ -128,49 +140,70 @@ public final class SecurityScopedBookmarksFile: BookmarksFileStore, @unchecked S
     }
 
     public func read() throws -> (data: Data, modified: Date) {
-        try withAccess { plist, _ in
-            var coordinationError: NSError?
-            var result: Result<(Data, Date), Error> = .failure(SyncError.bookmarksAccess("Bookmarks.plist could not be read."))
-            NSFileCoordinator().coordinate(readingItemAt: plist, options: [], error: &coordinationError) { url in
-                result = Result { (try Data(contentsOf: url), try Self.modificationDate(of: url)) }
-            }
-            if let coordinationError { throw SyncError.bookmarksAccess(coordinationError.localizedDescription) }
-            do {
-                return try result.get()
-            } catch let error as SyncError {
-                throw error
-            } catch {
-                throw SyncError.bookmarksAccess("Safari's bookmarks file cannot be read: \(error.localizedDescription). Choose the Safari folder again in Settings.")
-            }
-        }
+        try withAccess { plist, _ in try Self.read(plist) }
     }
 
     public func write(_ data: Data) throws -> Date {
+        try withAccess { plist, isFolder in try Self.write(data, to: plist, isFolder: isFolder) }
+    }
+
+    /// Takes Safari's bookmarks lock (a `lock` folder next to the plist, see
+    /// `SafariBookmarksLock`) so Safari and its iCloud sync agent do not write
+    /// at the same time. Without access to the folder only the content check
+    /// protects the write.
+    public func replace(_ expected: Data, with data: Data) throws -> Date? {
         try withAccess { plist, isFolder in
-            var coordinationError: NSError?
-            var result: Result<Date, Error> = .failure(SyncError.bookmarksWrite("Bookmarks.plist could not be written."))
-            NSFileCoordinator().coordinate(writingItemAt: plist, options: [.forReplacing], error: &coordinationError) { url in
-                result = Result {
-                    if isFolder {
-                        // Temporary file + rename: needs write access to the folder.
-                        try data.write(to: url, options: [.atomic])
-                    } else {
-                        // Only the file itself is accessible: overwrite in place.
-                        let handle = try FileHandle(forWritingTo: url)
-                        defer { try? handle.close() }
-                        try handle.truncate(atOffset: 0)
-                        try handle.write(contentsOf: data)
-                        try handle.synchronize()
-                    }
-                    return try Self.modificationDate(of: url)
+            var lock: SafariBookmarksLock?
+            if isFolder {
+                guard let taken = SafariBookmarksLock.acquire(in: plist.deletingLastPathComponent()) else { return nil }
+                lock = taken
+            }
+            defer { lock?.release() }
+            guard try Self.read(plist).data == expected else { return nil }
+            return try Self.write(data, to: plist, isFolder: isFolder)
+        }
+    }
+
+    private static func read(_ plist: URL) throws -> (data: Data, modified: Date) {
+        var coordinationError: NSError?
+        var result: Result<(Data, Date), Error> = .failure(SyncError.bookmarksAccess("Bookmarks.plist could not be read."))
+        NSFileCoordinator().coordinate(readingItemAt: plist, options: [], error: &coordinationError) { url in
+            result = Result { (try Data(contentsOf: url), try Self.modificationDate(of: url)) }
+        }
+        if let coordinationError { throw SyncError.bookmarksAccess(coordinationError.localizedDescription) }
+        do {
+            return try result.get()
+        } catch let error as SyncError {
+            throw error
+        } catch {
+            throw SyncError.bookmarksAccess("Safari's bookmarks file cannot be read: \(error.localizedDescription). Choose the Safari folder again in Settings.")
+        }
+    }
+
+    private static func write(_ data: Data, to plist: URL, isFolder: Bool) throws -> Date {
+        var coordinationError: NSError?
+        var result: Result<Date, Error> = .failure(SyncError.bookmarksWrite("Bookmarks.plist could not be written."))
+        NSFileCoordinator().coordinate(writingItemAt: plist, options: [.forReplacing], error: &coordinationError) { url in
+            result = Result {
+                if isFolder {
+                    // Temporary file + rename: needs write access to the folder.
+                    try data.write(to: url, options: [.atomic])
+                } else {
+                    // Only the file itself is accessible: overwrite in place.
+                    let handle = try FileHandle(forWritingTo: url)
+                    defer { try? handle.close() }
+                    try handle.truncate(atOffset: 0)
+                    try handle.write(contentsOf: data)
+                    try handle.synchronize()
                 }
+                return try Self.modificationDate(of: url)
             }
-            if let coordinationError { throw SyncError.bookmarksWrite(coordinationError.localizedDescription) }
-            do {
-                return try result.get()
-            } catch {
-                throw SyncError.bookmarksWrite("Safari's bookmarks could not be written: \(error.localizedDescription)")
-            }
+        }
+        if let coordinationError { throw SyncError.bookmarksWrite(coordinationError.localizedDescription) }
+        do {
+            return try result.get()
+        } catch {
+            throw SyncError.bookmarksWrite("Safari's bookmarks could not be written: \(error.localizedDescription)")
         }
     }
 
@@ -191,4 +224,60 @@ public final class SecurityScopedBookmarksFile: BookmarksFileStore, @unchecked S
             throw SyncError.bookmarksWrite("A backup of Safari's bookmarks could not be saved, so nothing was changed: \(error.localizedDescription)")
         }
     }
+}
+
+/// The lock Safari and its iCloud sync agent take while they read and write
+/// Bookmarks.plist: a `lock` folder next to it, holding `details.plist` that
+/// names the holder. A lock whose process no longer runs on this Mac is stale.
+struct SafariBookmarksLock {
+    let folder: URL
+
+    static func acquire(in safariFolder: URL, now: Date = Date()) -> SafariBookmarksLock? {
+        let folder = safariFolder.appendingPathComponent("lock", isDirectory: true)
+        if !create(folder) {
+            guard isStale(folder) else { return nil }
+            try? FileManager.default.removeItem(at: folder)
+            guard create(folder) else { return nil }
+        }
+        let details: [String: Any] = [
+            "LockFileDate": now,
+            "LockFileHostname": platformUUID ?? ProcessInfo.processInfo.hostName,
+            "LockFileProcessID": Int(getpid()),
+            "LockFileProcessName": ProcessInfo.processInfo.processName,
+            "LockFileUsername": NSUserName(),
+        ]
+        guard let data = try? PropertyListSerialization.data(fromPropertyList: details, format: .xml, options: 0),
+              (try? data.write(to: folder.appendingPathComponent("details.plist"))) != nil
+        else {
+            try? FileManager.default.removeItem(at: folder)
+            return nil
+        }
+        return SafariBookmarksLock(folder: folder)
+    }
+
+    func release() {
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    /// mkdir is atomic: exactly one process creates the folder.
+    private static func create(_ folder: URL) -> Bool {
+        mkdir(folder.path, 0o755) == 0
+    }
+
+    private static func isStale(_ folder: URL) -> Bool {
+        guard let data = try? Data(contentsOf: folder.appendingPathComponent("details.plist")),
+              let details = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let pid = details["LockFileProcessID"] as? Int,
+              let host = details["LockFileHostname"] as? String, host == platformUUID
+        else { return false }
+        return kill(pid_t(pid), 0) != 0 && errno == ESRCH
+    }
+
+    static let platformUUID: String? = {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
+        guard service != 0 else { return nil }
+        defer { IOObjectRelease(service) }
+        return IORegistryEntryCreateCFProperty(service, "IOPlatformUUID" as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? String
+    }()
 }
