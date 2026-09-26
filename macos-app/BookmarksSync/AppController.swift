@@ -27,6 +27,8 @@ final class AppController {
         terminated: { [weak self] in self?.automaticSync(after: 3) }
     )
     private lazy var realtime = RealtimeListener { [weak self] in self?.automaticSync(after: 2) }
+    private let iCloudNudge = ICloudNudge()
+    private var toldAboutAutomation = false
 
     private(set) var credentials: Credentials?
     private var engine: SyncEngine?
@@ -146,6 +148,30 @@ final class AppController {
     private func safariLaunched() {
         guard let engine else { return }
         Task { await engine.noteSafariLaunched() }
+        // Give Safari time to load its bookmarks before nudging it.
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            self?.nudgeICloudIfNeeded()
+        }
+    }
+
+    /// Changes this app wrote reach iCloud only after Safari saves a change of
+    /// its own; the nudge makes it do that.
+    private func nudgeICloudIfNeeded() {
+        guard state.iCloudUploadPending, let result = iCloudNudge.nudge() else { return }
+        switch result {
+        case .sent:
+            break
+        case .notAllowed:
+            guard !toldAboutAutomation else { return }
+            toldAboutAutomation = true
+            notifier.post(
+                title: "Allow controlling Safari",
+                body: "To send bookmarks from your other browsers to iCloud, allow Safari Bookmarks Sync to control Safari in System Settings > Privacy & Security > Automation."
+            )
+        case let .failed(message):
+            NSLog("BookmarksSync: could not nudge Safari: %@", message)
+        }
     }
 
     private func automaticSync(after delay: TimeInterval) {
@@ -180,6 +206,8 @@ final class AppController {
             let outcome = try await engine.sync(confirmDeletions: confirmDeletions)
             state = await engine.currentState()
             notifyAbout(outcome, before: before)
+            if outcome.safariBusy { automaticSync(after: 5) }
+            nudgeICloudIfNeeded()
         } catch let error as SyncError where error.needsUserAction {
             state = await engine.currentState()
             realtime.stop()

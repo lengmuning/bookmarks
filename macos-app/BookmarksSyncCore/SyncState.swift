@@ -25,6 +25,12 @@ public struct SyncState: Codable, Equatable, Sendable {
     /// Changes from other browsers (additions and deletions) waiting for
     /// Safari to quit.
     public var waitingForSafariToQuit = 0
+    /// This app wrote change entries into the plist that Safari's iCloud sync
+    /// has not uploaded yet; Safari needs a nudge once it runs.
+    public var iCloudUploadPending = false
+    /// Bookmarks written by versions before 2.1 never reached iCloud; they are
+    /// registered for upload once.
+    public var registeredUnsyncedItems = false
     public var lastSyncAt: Date?
     public var lastStats: SnapshotStats?
     public var lastError: String?
@@ -33,7 +39,8 @@ public struct SyncState: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case pendingImports, deletedImports, canonicalMap, lastOwnWrite, safariLaunchedSinceImport, lastUploadDigest
-        case deletionConfirmation, waitingForSafariToQuit, lastSyncAt, lastStats, lastError
+        case deletionConfirmation, waitingForSafariToQuit, iCloudUploadPending, registeredUnsyncedItems
+        case lastSyncAt, lastStats, lastError
         /// Written by 2.0.1 and earlier: imports Safari "dropped", now treated
         /// as deleted in Safari.
         case parkedImports
@@ -52,6 +59,8 @@ public struct SyncState: Codable, Equatable, Sendable {
         lastUploadDigest = try c.decodeIfPresent(String.self, forKey: .lastUploadDigest)
         deletionConfirmation = try c.decodeIfPresent(DeletionConfirmation.self, forKey: .deletionConfirmation)
         waitingForSafariToQuit = try c.decodeIfPresent(Int.self, forKey: .waitingForSafariToQuit) ?? 0
+        iCloudUploadPending = try c.decodeIfPresent(Bool.self, forKey: .iCloudUploadPending) ?? false
+        registeredUnsyncedItems = try c.decodeIfPresent(Bool.self, forKey: .registeredUnsyncedItems) ?? false
         lastSyncAt = try c.decodeIfPresent(Date.self, forKey: .lastSyncAt)
         lastStats = try c.decodeIfPresent(SnapshotStats.self, forKey: .lastStats)
         lastError = try c.decodeIfPresent(String.self, forKey: .lastError)
@@ -67,6 +76,8 @@ public struct SyncState: Codable, Equatable, Sendable {
         try c.encodeIfPresent(lastUploadDigest, forKey: .lastUploadDigest)
         try c.encodeIfPresent(deletionConfirmation, forKey: .deletionConfirmation)
         try c.encode(waitingForSafariToQuit, forKey: .waitingForSafariToQuit)
+        try c.encode(iCloudUploadPending, forKey: .iCloudUploadPending)
+        try c.encode(registeredUnsyncedItems, forKey: .registeredUnsyncedItems)
         try c.encodeIfPresent(lastSyncAt, forKey: .lastSyncAt)
         try c.encodeIfPresent(lastStats, forKey: .lastStats)
         try c.encodeIfPresent(lastError, forKey: .lastError)

@@ -13,6 +13,10 @@ public struct SyncOutcome: Equatable, Sendable {
     /// Bookmarks from other browsers that the user deleted in Safari.
     public var deletedInSafari = 0
     public var waitingForSafariToQuit = 0
+    /// Safari or its iCloud sync agent was writing the plist; try again soon.
+    public var safariBusy = false
+    /// Bookmarks from earlier versions registered for iCloud upload.
+    public var registeredForICloud = 0
     public var needsConfirmation: DeletionConfirmation?
     public var stats: SnapshotStats?
 
@@ -99,8 +103,9 @@ public actor SyncEngine {
         var outcome = SyncOutcome()
         let (data, modified) = try file.read()
         let document = try SafariBookmarksDocument(data: data)
-        let items = document.items()
+        let items = document.items().filter { $0.url != ICloudTrigger.url }
         let present = Set(items.map(\.url))
+        if document.pendingChangeCount == 0 { state.iCloudUploadPending = false }
 
         outcome.deletedInSafari = reconcilePendingImports(present: present, modified: modified)
 
@@ -128,7 +133,13 @@ public actor SyncEngine {
         let deletedHere = Set(state.deletedImports)
         let toImport = pending.filter { !presentCanonical.contains($0.url) && !deletedHere.contains($0.url) }
         let toRemove = Set(deletions).intersection(presentCanonical)
-        guard !toImport.isEmpty || !toRemove.isEmpty else {
+        var unsynced = 0
+        if !state.registeredUnsyncedItems {
+            var probe = document
+            unsynced = probe.registerUnsyncedItems()
+            if unsynced == 0 { state.registeredUnsyncedItems = true }
+        }
+        guard !toImport.isEmpty || !toRemove.isEmpty || unsynced > 0 else {
             state.waitingForSafariToQuit = 0
             return outcome
         }
@@ -141,6 +152,7 @@ public actor SyncEngine {
         var updated = document
         let added = updated.add(toImport, now: now())
         let removed = updated.remove(toRemove, canonical: canonical)
+        let registered = unsynced > 0 ? updated.registerUnsyncedItems() : 0
         let newData = try updated.data()
         _ = try file.backup(data)
         guard !safari.isSafariRunning else {
@@ -148,9 +160,15 @@ public actor SyncEngine {
             outcome.waitingForSafariToQuit = state.waitingForSafariToQuit
             return outcome
         }
-        let written = try file.write(newData)
+        guard let written = try file.replace(data, with: newData) else {
+            outcome.safariBusy = true
+            return outcome
+        }
         try verifyWrite(added: added, removed: removed, canonical: canonical, original: data)
 
+        if updated.pendingChangeCount > document.pendingChangeCount { state.iCloudUploadPending = true }
+        if unsynced > 0 { state.registeredUnsyncedItems = true }
+        outcome.registeredForICloud = registered
         state.lastOwnWrite = written
         if !added.isEmpty { state.safariLaunchedSinceImport = false }
         state.pendingImports.removeAll { removed.contains(canonical($0.url)) }
@@ -161,7 +179,7 @@ public actor SyncEngine {
 
         // Tell the server what Safari has now: the imports (still owned by the
         // browsers) and the removals, which completes those deletes.
-        let response = try await upload(updated.items(), data: newData, confirmDeletions: false)
+        let response = try await upload(updated.items().filter { $0.url != ICloudTrigger.url }, data: newData, confirmDeletions: false)
         outcome.needsConfirmation = response.needsConfirmation
         return outcome
     }
