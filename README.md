@@ -110,7 +110,7 @@ curl -X DELETE $W/v2/admin/groups/<pair_id> -H "$A"
 
 ### Mac App
 
-1. 打开 `dist/Safari-Bookmarks-Sync-2.0.3.dmg`，把 App 拖进"应用程序"。App 用开发者证书签名但没有公证，第一次打开需要在 Finder 里右键点击 App，选"打开"。
+1. 从 [Releases](../../releases/latest) 下载 `Safari-Bookmarks-Sync-<版本>.dmg`（也可以用 `macos-app/scripts/build-dmg.sh` 自己构建到 `dist/`），把 App 拖进"应用程序"。App 用开发者证书签名但没有公证，第一次打开会被 macOS 拦截：macOS 15 及以上到"系统设置 → 隐私与安全性"里点"仍要打开"；macOS 14 在 Finder 里右键点 App，选"打开"。
 2. App 常驻在菜单栏，第一次打开会弹出设置窗口。填入 Worker 地址和你的 Access Key，点"Connect"。
 3. 接着会弹出一个已经定位在 Safari 文件夹的选择框，点"Allow Access"。macOS 把 `~/Library/Safari` 列为受保护目录，任何 App 都不能自己读取，所以这一步授权是必需的，只需做一次。
 4. 设置窗口会显示一个配对码（例如 `K7PM-3QXD`，30 分钟内有效、只能用一次），拿去给 Chrome 或 Firefox 用。需要时可以点"New Pairing Code"重新生成。
@@ -171,6 +171,6 @@ Mac App 的 Debug 版支持 `-snapshot-settings`（加 `-paired` 显示已连接
 - **经 iCloud 同步依赖 Safari 的内部格式。** Safari 的 iCloud 同步只上传书签文件里 `Sync.Changes` 列出的改动，App 写入时会按 Safari 自己的格式记下这些改动（见 [docs/SYNC-V2.md](docs/SYNC-V2.md) 的 "iCloud" 一节），这样浏览器里的新增和删除会经 iCloud 传到你的其他苹果设备。这不是公开接口，Safari 更新后可能失效。
   - Safari 打开时并不会马上上传这些改动。App 会通过 AppleScript 让 Safari 重新添加一条阅读列表项 "Safari Bookmarks Sync" 来触发上传，第一次需要在"系统设置 → 隐私与安全性 → 自动化"里允许 App 控制 Safari。不允许也可以：下一次你在 Safari 或其他苹果设备上改动书签时，这些改动会一起上传。
   - 2.1 之前的版本写进 Safari 的书签没有传到 iCloud，2.1 第一次写入时会把它们补上。
-- **没有公证。** 公证需要付费的 Apple Developer Program 会员；在此之前，第一次打开需要右键选"打开"。
+- **没有公证。** 公证需要付费的 Apple Developer Program 会员；在此之前，第一次打开要按上面"安装与使用"里的步骤手动允许。
 - **浏览器里的书签顺序不按 Safari 排。** 书签会放进正确的文件夹，但在文件夹内的顺序不跟 Safari 保持一致。
 - **只支持桌面版 Firefox。** Android 版 Firefox 没有书签 API，所以扩展没有声明支持 Android。
