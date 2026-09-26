@@ -9,8 +9,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "2.0.3"
-    CURRENT_PROJECT_VERSION: "4"
+    MARKETING_VERSION: "2.1.0"
+    CURRENT_PROJECT_VERSION: "5"
     DEVELOPMENT_TEAM: C7LPKS46N5
     ENABLE_HARDENED_RUNTIME: YES
     ENABLE_USER_SCRIPT_SANDBOXING: YES
@@ -44,6 +44,7 @@ targets:
         LSUIElement: true
         LSApplicationCategoryType: public.app-category.productivity
         NSHumanReadableCopyright: Copyright © 2026 lengmuning
+        NSAppleEventsUsageDescription: Safari uploads bookmarks from your other browsers to iCloud after it saves a change of its own. The app adds one Reading List item in Safari to start that upload.
     entitlements:
       path: BookmarksSync/BookmarksSync.entitlements
       properties:
@@ -51,6 +52,9 @@ targets:
         com.apple.security.network.client: true
         com.apple.security.files.user-selected.read-write: true
         com.apple.security.files.bookmarks.app-scope: true
+        # Nudging Safari's iCloud sync (ICloudNudge) through AppleScript.
+        com.apple.security.automation.apple-events: true
+        com.apple.security.temporary-exception.apple-events: [com.apple.Safari]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.lengmuning.bookmarks-sync

@@ -7,6 +7,8 @@ final class FakeFile: BookmarksFileStore, @unchecked Sendable {
     var writes: [Data] = []
     var backups: [Data] = []
     var corruptNextWrite = false
+    /// Safari or its sync agent holds the bookmarks lock.
+    var busy = false
 
     init(_ data: Data) { self.data = data }
 
@@ -19,6 +21,11 @@ final class FakeFile: BookmarksFileStore, @unchecked Sendable {
         corruptNextWrite = false
         modified = modified.addingTimeInterval(10)
         return modified
+    }
+
+    func replace(_ expected: Data, with data: Data) throws -> Date? {
+        guard !busy, self.data == expected else { return nil }
+        return try write(data)
     }
 
     func backup(_ data: Data) throws -> URL {
@@ -284,5 +291,91 @@ final class SyncEngineTests: XCTestCase {
         let outcome = try await makeEngine().sync()
         XCTAssertEqual(outcome.imported, 0)
         XCTAssertTrue(file.writes.isEmpty)
+    }
+
+    // MARK: iCloud
+
+    func testLeavesTheICloudTriggerOutOfSnapshots() async throws {
+        var root = Fixture.root()
+        var children = root["Children"] as! [[String: Any]]
+        var readingList = children[3]
+        readingList["Children"] = (readingList["Children"] as! [[String: Any]]) + [Fixture.leaf(ICloudTrigger.title, ICloudTrigger.url)]
+        children[3] = readingList
+        root["Children"] = children
+        file = FakeFile(Fixture.data(root))
+        _ = try await makeEngine().sync()
+        XCTAssertEqual(api.snapshots[0].bookmarks.count, 6)
+        XCTAssertFalse(api.snapshots[0].bookmarks.contains { $0.url == ICloudTrigger.url })
+    }
+
+    func testWaitsWhileSafariHoldsTheBookmarksLock() async throws {
+        api.browserRows = [chromeAddition]
+        file.busy = true
+        let engine = makeEngine()
+        let busy = try await engine.sync()
+        XCTAssertTrue(busy.safariBusy)
+        XCTAssertEqual(busy.imported, 0)
+        XCTAssertTrue(file.writes.isEmpty)
+        let pendingWhileBusy = await engine.currentState().pendingImports
+        XCTAssertEqual(pendingWhileBusy, [])
+
+        file.busy = false
+        let outcome = try await engine.sync()
+        XCTAssertFalse(outcome.safariBusy)
+        XCTAssertEqual(outcome.imported, 1)
+        XCTAssertTrue(try urlsInFile().contains(chromeAddition.url))
+    }
+
+    func testTracksChangesWaitingForICloud() async throws {
+        file = FakeFile(Fixture.data(Fixture.iCloudRoot()))
+        api.browserRows = [chromeAddition]
+        let engine = makeEngine()
+        _ = try await engine.sync()
+        var state = await engine.currentState()
+        XCTAssertTrue(state.iCloudUploadPending)
+        XCTAssertEqual(Fixture.changes(file.data).map { $0["BookmarkType"] as? String }, ["Folder", "Leaf"])
+
+        // Safari's sync agent uploads the changes and clears the list.
+        var root = Fixture.plist(file.data)
+        var sync = root["Sync"] as! [String: Any]
+        sync.removeValue(forKey: "Changes")
+        root["Sync"] = sync
+        file.safariRewrites(root)
+        _ = try await engine.sync()
+        state = await engine.currentState()
+        XCTAssertFalse(state.iCloudUploadPending)
+    }
+
+    func testRegistersBookmarksFromEarlierVersionsOnce() async throws {
+        var root = Fixture.iCloudRoot()
+        var children = root["Children"] as! [[String: Any]]
+        var menu = children[2]
+        menu["Children"] = (menu["Children"] as! [[String: Any]]) + [Fixture.leaf("Old import", "https://old.example/")]
+        children[2] = menu
+        root["Children"] = children
+        file = FakeFile(Fixture.data(root))
+
+        let engine = makeEngine()
+        let outcome = try await engine.sync()
+        XCTAssertEqual(outcome.registeredForICloud, 1)
+        XCTAssertEqual(file.writes.count, 1)
+        XCTAssertEqual(Fixture.changes(file.data).count, 1)
+        var state = await engine.currentState()
+        XCTAssertTrue(state.registeredUnsyncedItems)
+        XCTAssertTrue(state.iCloudUploadPending)
+
+        _ = try await engine.sync()
+        XCTAssertEqual(file.writes.count, 1, "nothing new to write")
+        state = await engine.currentState()
+        XCTAssertTrue(state.registeredUnsyncedItems)
+    }
+
+    func testDoesNotRegisterAnythingWithoutICloud() async throws {
+        let engine = makeEngine()
+        _ = try await engine.sync()
+        XCTAssertTrue(file.writes.isEmpty)
+        let state = await engine.currentState()
+        XCTAssertTrue(state.registeredUnsyncedItems)
+        XCTAssertFalse(state.iCloudUploadPending)
     }
 }

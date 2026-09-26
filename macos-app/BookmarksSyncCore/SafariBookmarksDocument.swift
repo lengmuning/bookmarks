@@ -3,6 +3,10 @@ import Foundation
 /// Safari's Bookmarks.plist, edited as a property list so that every key this
 /// app does not know about (iCloud metadata, UUIDs, reading list data) is kept
 /// as it was. The file format (binary or XML) is kept too.
+///
+/// Safari's iCloud sync uploads only what is listed in the top-level
+/// `Sync.Changes` array, so every edit also records a change entry there, in
+/// the form Safari writes (docs/SYNC-V2.md, "iCloud").
 public struct SafariBookmarksDocument {
     /// Top-level folders: plist title and the name used in folder paths.
     static let specialFolders: [(plistTitle: String, name: String)] = [
@@ -68,12 +72,14 @@ public struct SafariBookmarksDocument {
     // MARK: Writing
 
     /// Adds bookmarks that came from other browsers and returns the URLs that
-    /// were written. URLs already in the document are skipped.
+    /// were written. URLs already in the document are skipped. Each new leaf
+    /// and each folder created for it gets an Add change.
     @discardableResult
     public mutating func add(_ rows: [RemoteBookmark], now: Date) -> [String] {
         var present = Set(items().map(\.url))
         var children = Self.children(of: root)
         var added: [String] = []
+        var changes: [[String: Any]] = []
 
         for row in rows where !present.contains(row.url) {
             let (top, rest) = Self.placement(for: row.folderPath)
@@ -82,28 +88,35 @@ public struct SafariBookmarksDocument {
             if let found = children.firstIndex(where: { Self.isFolder($0) && ($0["Title"] as? String) == plistTitle }) {
                 topIndex = found
             } else {
+                // Top-level folders have fixed iCloud identities; no change entry.
                 children.append(Self.makeFolder(title: plistTitle))
                 topIndex = children.count - 1
             }
             let leaf = Self.makeLeaf(row, readingList: top == Self.readingList, now: now)
             // The Reading List has no subfolders.
             let path = top == Self.readingList ? [] : rest
-            children[topIndex] = Self.insert(leaf, path: path, into: children[topIndex])
+            children[topIndex] = Self.insert(leaf, path: path, into: children[topIndex], changes: &changes)
+            changes.append(Self.change("Add", for: leaf))
             present.insert(row.url)
             added.append(row.url)
         }
 
         root["Children"] = children
+        record(changes)
         return added
     }
 
     /// Removes, from every folder, the bookmarks whose URL maps through
     /// `canonical` into `urls` (bookmarks deleted in another browser). Folders
     /// and everything else stay. Returns the canonical URLs that were removed.
+    /// A bookmark in iCloud gets a Delete change; one that never reached
+    /// iCloud only loses its pending changes.
     @discardableResult
     public mutating func remove(_ urls: Set<String>, canonical: (String) -> String) -> Set<String> {
         guard !urls.isEmpty else { return [] }
         var removed = Set<String>()
+        var changes: [[String: Any]] = []
+        var dropped = Set<String>()
         func prune(_ node: [String: Any]) -> [String: Any] {
             guard let children = node["Children"] as? [Any] else { return node }
             var node = node
@@ -113,6 +126,11 @@ public struct SafariBookmarksDocument {
                     let key = canonical(url)
                     guard urls.contains(key) else { return child }
                     removed.insert(key)
+                    if Self.serverID(of: child) != nil {
+                        changes.append(Self.change("Delete", for: child))
+                    } else if let uuid = child["WebBookmarkUUID"] as? String {
+                        dropped.insert(uuid)
+                    }
                     return nil
                 }
                 return Self.isFolder(child) ? prune(child) : child
@@ -120,7 +138,87 @@ public struct SafariBookmarksDocument {
             return node
         }
         root = prune(root)
+        if !dropped.isEmpty {
+            pendingChanges.removeAll { dropped.contains($0["BookmarkUUID"] as? String ?? "") }
+        }
+        record(changes)
         return removed
+    }
+
+    // MARK: iCloud change entries
+
+    /// Whether Safari syncs bookmarks with iCloud on this Mac (it keeps its
+    /// CloudKit state at the top of the file). Without it no changes are recorded.
+    public var usesICloud: Bool {
+        (root["Sync"] as? [String: Any])?["CloudKitMigrationState"] != nil
+    }
+
+    /// Change entries Safari's sync agent has not uploaded yet (written by
+    /// Safari or by this app).
+    public var pendingChangeCount: Int { pendingChanges.count }
+
+    /// Adds an Add change for every bookmark and folder that is neither in
+    /// iCloud nor waiting to be uploaded: ones written by earlier versions of
+    /// this app, which never told iCloud. Parents come before their children.
+    /// Returns how many were registered.
+    @discardableResult
+    public mutating func registerUnsyncedItems() -> Int {
+        guard usesICloud else { return 0 }
+        let waiting = Set(pendingChanges.compactMap { $0["BookmarkUUID"] as? String })
+        var changes: [[String: Any]] = []
+        func visit(_ node: [String: Any]) {
+            for child in Self.children(of: node) {
+                let type = child["WebBookmarkType"] as? String
+                guard type == "WebBookmarkTypeLeaf" || type == "WebBookmarkTypeList" else { continue }
+                if Self.serverID(of: child) == nil, let uuid = child["WebBookmarkUUID"] as? String, !waiting.contains(uuid) {
+                    changes.append(Self.change("Add", for: child))
+                }
+                visit(child)
+            }
+        }
+        // Top-level folders (Favorites, Bookmarks Menu, Reading List) are not items.
+        Self.children(of: root).filter(Self.isFolder).forEach(visit)
+        record(changes)
+        return changes.count
+    }
+
+    private var pendingChanges: [[String: Any]] {
+        get { ((root["Sync"] as? [String: Any])?["Changes"] as? [Any])?.compactMap { $0 as? [String: Any] } ?? [] }
+        set {
+            var sync = root["Sync"] as? [String: Any] ?? [:]
+            if newValue.isEmpty {
+                sync.removeValue(forKey: "Changes")
+            } else {
+                sync["Changes"] = newValue
+            }
+            root["Sync"] = sync
+        }
+    }
+
+    private mutating func record(_ changes: [[String: Any]]) {
+        guard usesICloud, !changes.isEmpty else { return }
+        pendingChanges += changes
+    }
+
+    /// A change entry as Safari writes it. Add carries only the item's UUID;
+    /// Delete also names the iCloud record and hands back its sync data.
+    static func change(_ type: String, for node: [String: Any]) -> [String: Any] {
+        var entry: [String: Any] = [
+            "Token": UUID().uuidString,
+            "Type": type,
+            "BookmarkType": isFolder(node) ? "Folder" : "Leaf",
+            "BookmarkUUID": node["WebBookmarkUUID"] as? String ?? "",
+        ]
+        if type == "Delete", let sync = node["Sync"] as? [String: Any], let serverID = sync["ServerID"] as? String {
+            entry["BookmarkServerID"] = serverID
+            if let data = sync["Data"] as? Data { entry["DeletedBookmarkSyncData"] = data }
+        }
+        return entry
+    }
+
+    private static func serverID(of node: [String: Any]) -> String? {
+        guard let id = (node["Sync"] as? [String: Any])?["ServerID"] as? String, !id.isEmpty else { return nil }
+        return id
     }
 
     static func placement(for folderPath: [String]) -> (top: String, rest: [String]) {
@@ -131,15 +229,17 @@ public struct SafariBookmarksDocument {
         return (fallbackTopLevel, folderPath)
     }
 
-    private static func insert(_ leaf: [String: Any], path: [String], into folder: [String: Any]) -> [String: Any] {
+    private static func insert(_ leaf: [String: Any], path: [String], into folder: [String: Any], changes: inout [[String: Any]]) -> [String: Any] {
         var folder = folder
         var children = Self.children(of: folder)
         if let next = path.first {
             let rest = Array(path.dropFirst())
             if let index = children.firstIndex(where: { isFolder($0) && trimmed($0["Title"] as? String) == next }) {
-                children[index] = insert(leaf, path: rest, into: children[index])
+                children[index] = insert(leaf, path: rest, into: children[index], changes: &changes)
             } else {
-                children.append(insert(leaf, path: rest, into: makeFolder(title: next)))
+                let created = makeFolder(title: next)
+                changes.append(change("Add", for: created))
+                children.append(insert(leaf, path: rest, into: created, changes: &changes))
             }
         } else {
             children.append(leaf)
@@ -196,4 +296,14 @@ public struct SafariBookmarksDocument {
         if readingList { leaf["ReadingList"] = ["DateAdded": now] }
         return leaf
     }
+}
+
+/// Safari's iCloud sync agent uploads pending change entries only after Safari
+/// itself saves a bookmark change; nothing outside Safari can ask it directly.
+/// The app nudges Safari by adding this Reading List item again: Safari
+/// replaces the existing item (no duplicate) and syncs everything pending.
+/// The item is never synced to the other browsers.
+public enum ICloudTrigger {
+    public static let url = "https://github.com/lengmuning/bookmarks#safari-bookmarks-sync"
+    public static let title = "Safari Bookmarks Sync"
 }

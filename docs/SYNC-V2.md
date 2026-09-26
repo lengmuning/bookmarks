@@ -143,8 +143,9 @@ uploads it as usual.
 - Imported URLs stay in `unconfirmed_imports` until a later snapshot, taken
   after Safari itself rewrote the plist, still contains them. If such a
   snapshot no longer contains them, they were deleted in Safari: the app sends
-  them in `deleted_imports` (the guard applies). This cannot be told apart
-  from iCloud replacing the file, which then also deletes them.
+  them in `deleted_imports` (the guard applies).
+- Each imported bookmark, and each folder created for it, gets an Add entry
+  for iCloud (see "iCloud").
 
 ## Safari removal (browser deletes out of the plist)
 
@@ -156,8 +157,47 @@ uploads it as usual.
 - The file is read back; if a removed URL is still there, the original is
   restored. The next snapshot no longer has the URLs, which completes the
   deletes.
-- Removing a bookmark from the plist does not tell iCloud: Safari may bring it
-  back from iCloud, and it then counts as a Safari bookmark again.
+- Each removed bookmark that is in iCloud gets a Delete entry (see "iCloud");
+  one that never reached iCloud only loses its pending entries.
+
+## iCloud
+
+Safari's iCloud sync (`SafariBookmarksSyncAgent`) does not compare the plist
+with iCloud. It uploads what is listed in the top-level `Sync.Changes` array,
+then clears the list and gives each new item a `Sync` dict (`ServerID`, the
+CloudKit record name, and `Data`). Items written without an entry are never
+uploaded. So every write records an entry the way Safari does; only when the
+top-level `Sync` has `CloudKitMigrationState` (iCloud bookmarks on).
+
+| Edit | Entry (each with its own `Token`, a new UUID) |
+|---|---|
+| New bookmark / folder | `{Type: Add, BookmarkType: Leaf / Folder, BookmarkUUID}`; the item has no `Sync` dict; a folder comes before what it holds |
+| Delete | `{Type: Delete, BookmarkType, BookmarkUUID, BookmarkServerID, DeletedBookmarkSyncData}`, the last two from the item's `Sync` (`ServerID`, `Data`); a folder needs one entry for every item under it too |
+| Rename | `{Type: Modify, BookmarkType, BookmarkUUID, BookmarkServerID, ChangedAttributes: [Title]}` (not written by the app) |
+| Move | `{Type: Modify, IsMove: true, BookmarkType, BookmarkUUID, BookmarkServerID}` (not written by the app) |
+
+- **Lock.** Safari and the agent write the plist while holding a `lock` folder
+  next to it, with `details.plist` (`LockFileProcessID`, `LockFileProcessName`,
+  `LockFileUsername`, `LockFileDate`, `LockFileHostname` = the Mac's
+  IOPlatformUUID). The agent also writes while Safari is closed (when another
+  device changes bookmarks). The app creates the same folder around its
+  write, and writes only if the file still holds what it read; otherwise it
+  tries again a few seconds later. A lock whose process is gone is taken
+  over. With only the file granted (not the Safari folder) the app cannot
+  take the lock and relies on the content check alone.
+- **Upload.** Safari starting does not upload pending entries. They go up the
+  next time Safari saves a bookmark change of its own, or when a push from
+  another device's change starts a sync. To not wait, the app asks the running
+  Safari once per launch, through AppleScript (Automation permission), to add
+  the Reading List item `https://github.com/lengmuning/bookmarks#safari-bookmarks-sync`.
+  When the item exists Safari replaces it (a Delete and an Add, no
+  duplicate), which starts the upload; Safari saves such a change after about
+  10 seconds. The item is left out of every snapshot.
+- **Earlier versions.** Bookmarks written by versions before 2.1 have no `Sync`
+  dict and no entry. The first write of 2.1 adds an Add entry for every item
+  without a `ServerID` that has no pending entry, once.
+- This is Safari's internal format, not a documented interface; a Safari
+  update can change it.
 
 ## Access control
 
@@ -265,6 +305,5 @@ per IP per hour.
 ## Not covered
 
 - Order inside a folder is stored but browsers append instead of reordering.
-- Writing the plist does not make Safari upload to iCloud; iCloud may replace
-  the imported bookmarks, which is why imports are confirmed before Safari
-  takes ownership of them.
+- The app does not write renames or moves into Safari (placement follows
+  Safari), so it records no Modify entries.
