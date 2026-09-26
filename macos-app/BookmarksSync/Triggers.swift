@@ -70,6 +70,40 @@ final class SafariMonitor {
     }
 }
 
+/// Gets Safari's iCloud sync agent to upload the change entries this app
+/// wrote: Safari has to save a bookmark change of its own first, so the
+/// `ICloudTrigger` Reading List item is added again through Safari's
+/// AppleScript (docs/SYNC-V2.md, "iCloud").
+@MainActor
+final class ICloudNudge {
+    enum Result: Equatable {
+        case sent
+        case notAllowed
+        case failed(String)
+    }
+
+    /// Safari process last nudged, so each launch is nudged at most once.
+    private var nudgedSafari: pid_t?
+
+    /// Asks the running Safari to add the trigger item, once per Safari launch.
+    /// Returns nil when Safari is not running or was already nudged.
+    func nudge() -> Result? {
+        guard let safari = NSRunningApplication.runningApplications(withBundleIdentifier: SafariMonitor.bundleIdentifier).first,
+              safari.processIdentifier != nudgedSafari
+        else { return nil }
+        nudgedSafari = safari.processIdentifier
+        let source = """
+            tell application id "\(SafariMonitor.bundleIdentifier)" to add reading list item "\(ICloudTrigger.url)" with title "\(ICloudTrigger.title)"
+            """
+        var error: NSDictionary?
+        NSAppleScript(source: source)?.executeAndReturnError(&error)
+        guard let error else { return .sent }
+        // -1743: the user has not allowed this app to control Safari.
+        if error[NSAppleScript.errorNumber] as? Int == -1743 { return .notAllowed }
+        return .failed(error[NSAppleScript.errorMessage] as? String ?? "AppleScript error")
+    }
+}
+
 /// Listens on the Worker's WebSocket so bookmarks added in other browsers are
 /// imported without waiting for the periodic sync.
 @MainActor

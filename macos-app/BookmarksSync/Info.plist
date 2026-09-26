@@ -24,6 +24,8 @@
 	<string>public.app-category.productivity</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Safari uploads bookmarks from your other browsers to iCloud after it saves a change of its own. The app adds one Reading List item in Safari to start that upload.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 lengmuning</string>
 </dict>

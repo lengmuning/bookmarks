@@ -168,11 +168,9 @@ Mac App 的 Debug 版支持 `-snapshot-settings`（加 `-paired` 显示已连接
 
 ## 已知限制
 
-- **iCloud 不会上传 App 对书签文件的改动。** App 直接修改 `Bookmarks.plist`，Safari 并不知道书签变了，所以从其他浏览器同步来的新增和删除都不会经 iCloud 传到你的其他苹果设备；iCloud 还可能用云端版本覆盖掉它们：
-  - 从浏览器新增、写进 Safari 的书签被 iCloud 覆盖掉时，App 分不清这和"你在 Safari 里删除"，会按删除处理，浏览器里也会删掉；
-  - 在浏览器里删除、已从 Safari 文件删掉的书签，如果被 iCloud 恢复回来，会重新出现在各浏览器里，这时请在 Safari 里删除它。
-  
-  macOS 没有公开的接口能让 App 通过 Safari 自身增删书签（Safari 扩展也没有书签 API）。
+- **经 iCloud 同步依赖 Safari 的内部格式。** Safari 的 iCloud 同步只上传书签文件里 `Sync.Changes` 列出的改动，App 写入时会按 Safari 自己的格式记下这些改动（见 [docs/SYNC-V2.md](docs/SYNC-V2.md) 的 "iCloud" 一节），这样浏览器里的新增和删除会经 iCloud 传到你的其他苹果设备。这不是公开接口，Safari 更新后可能失效。
+  - Safari 打开时并不会马上上传这些改动。App 会通过 AppleScript 让 Safari 重新添加一条阅读列表项 "Safari Bookmarks Sync" 来触发上传，第一次需要在"系统设置 → 隐私与安全性 → 自动化"里允许 App 控制 Safari。不允许也可以：下一次你在 Safari 或其他苹果设备上改动书签时，这些改动会一起上传。
+  - 2.1 之前的版本写进 Safari 的书签没有传到 iCloud，2.1 第一次写入时会把它们补上。
 - **没有公证。** 公证需要付费的 Apple Developer Program 会员；在此之前，第一次打开需要右键选"打开"。
 - **浏览器里的书签顺序不按 Safari 排。** 书签会放进正确的文件夹，但在文件夹内的顺序不跟 Safari 保持一致。
 - **只支持桌面版 Firefox。** Android 版 Firefox 没有书签 API，所以扩展没有声明支持 Android。

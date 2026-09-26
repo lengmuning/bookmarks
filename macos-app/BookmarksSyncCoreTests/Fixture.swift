@@ -56,6 +56,26 @@ enum Fixture {
         ]
     }
 
+    /// `root()` as it looks with iCloud bookmarks on: CloudKit state at the
+    /// top and every item already in iCloud (a `Sync` dict with a ServerID).
+    static func iCloudRoot(_ root: [String: Any] = root()) -> [String: Any] {
+        func synced(_ node: [String: Any]) -> [String: Any] {
+            var node = node
+            guard node["WebBookmarkType"] as? String != "WebBookmarkTypeProxy" else { return node }
+            node["Sync"] = ["ServerID": "SERVER-" + (node["WebBookmarkUUID"] as? String ?? ""), "Data": Data([9, 9])]
+            if let children = node["Children"] as? [[String: Any]] { node["Children"] = children.map(synced) }
+            return node
+        }
+        var root = root
+        root["Children"] = (root["Children"] as! [[String: Any]]).map(synced)
+        root["Sync"] = ["CloudKitMigrationState": 3, "ServerData": Data([1, 2, 3])]
+        return root
+    }
+
+    static func changes(_ data: Data) -> [[String: Any]] {
+        ((plist(data)["Sync"] as? [String: Any])?["Changes"] as? [[String: Any]]) ?? []
+    }
+
     static func data(_ root: [String: Any] = root(), format: PropertyListSerialization.PropertyListFormat = .binary) -> Data {
         try! PropertyListSerialization.data(fromPropertyList: root, format: format, options: 0)
     }
