@@ -134,7 +134,12 @@ uploads it as usual.
 
 ## Safari import (browser-owned rows into the plist)
 
-- Only while Safari is not running; otherwise the app waits for Safari to quit.
+- Also while Safari is running (since 2.2). Safari watches the file: it is an
+  `NSFilePresenter` for it and compares the file's date and size before
+  saving, so it reloads the plist after the app's coordinated write instead of
+  saving over it. A change the user made in Safari within the few seconds
+  before that, not yet saved, is dropped by Safari ("pending user changes
+  discarded").
 - Folder mapping: `Favorites` -> `BookmarksBar`, `Bookmarks Menu` ->
   `BookmarksMenu`, `Reading List` -> `com.apple.ReadingList`. Any other first
   segment is placed under `Bookmarks Menu`.
@@ -144,13 +149,20 @@ uploads it as usual.
   after Safari itself rewrote the plist, still contains them. If such a
   snapshot no longer contains them, they were deleted in Safari: the app sends
   them in `deleted_imports` (the guard applies).
+- Except for imports written while Safari was running: missing from Safari's
+  next save, they are taken as saved over by Safari, not deleted. They are not
+  sent in `deleted_imports`, stay browser-owned, and are written again once
+  Safari has quit (the menu shows how many wait). A bookmark the user deleted
+  in Safari right after it arrived therefore comes back once.
 - Each imported bookmark, and each folder created for it, gets an Add entry
   for iCloud (see "iCloud").
 
 ## Safari removal (browser deletes out of the plist)
 
-- Same conditions as imports: only while Safari is not running, after a backup,
-  keeping the file format and every key the app does not know.
+- Same conditions as imports: also while Safari is running, after a backup,
+  keeping the file format and every key the app does not know. Should Safari
+  ever save over a removal, the next snapshot has the bookmark again and the
+  server restores it everywhere; nothing is lost, it has to be deleted again.
 - The app maps each plist URL to its canonical form with the `canonical_map`
   of its last snapshot and removes every leaf, in any folder (Reading List
   included), whose canonical URL is in `pending_deletions`. Folders stay.
@@ -187,12 +199,25 @@ top-level `Sync` has `CloudKitMigrationState` (iCloud bookmarks on).
   take the lock and relies on the content check alone.
 - **Upload.** Safari starting does not upload pending entries. They go up the
   next time Safari saves a bookmark change of its own, or when a push from
-  another device's change starts a sync. To not wait, the app asks the running
-  Safari once per launch, through AppleScript (Automation permission), to add
-  the Reading List item `https://github.com/lengmuning/bookmarks#safari-bookmarks-sync`.
-  When the item exists Safari replaces it (a Delete and an Add, no
-  duplicate), which starts the upload; Safari saves such a change after about
-  10 seconds. The item is left out of every snapshot.
+  another device's change starts a sync; nothing outside Safari can ask the
+  agent directly. So the app makes Safari save a change: it sends Safari's
+  `add reading list item` Apple Event (Automation permission) for
+  `https://github.com/lengmuning/bookmarks#safari-bookmarks-sync`. When the
+  item exists Safari replaces it (a Delete and an Add, no duplicate); Safari
+  saves such a change after about 10 seconds and the agent uploads everything
+  pending. The item is left out of every snapshot.
+- **Upload in the background.** About a minute after a sync that leaves the
+  app's entries pending (another sync restarts the wait), and 5 seconds after
+  the user starts Safari, the app nudges Safari, then checks the plist every
+  5 seconds and nudges again every 30 seconds until `Sync.Changes` is empty,
+  for up to 2 minutes. If Safari is not running and "Upload to iCloud in the
+  background" is on (the default), the app opens it hidden first and quits it
+  afterwards, unless the user brought it forward in the meantime. A failed
+  attempt is retried after 10 minutes, 30 minutes, then every 2 hours, or
+  right away on a new write or "Upload Now". Retries stop opening Safari after
+  5 failed attempts in a row (until the next write or "Upload Now") and after
+  Automation was refused (until "Upload Now"). With the option off, only a
+  Safari the user started is nudged.
 - **Earlier versions.** Bookmarks written by versions before 2.1 have no `Sync`
   dict and no entry. The first write of 2.1 adds an Add entry for every item
   without a `ServerID` that has no pending entry, once.

@@ -29,7 +29,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     }
 
     private func updateButton() {
-        let symbol = app.isSyncing ? "arrow.triangle.2.circlepath" : needsAttention ? "exclamationmark.triangle" : "bookmark"
+        let busy = app.isSyncing || app.iCloudUpload == .uploading
+        let symbol = busy ? "arrow.triangle.2.circlepath" : needsAttention ? "exclamationmark.triangle" : "bookmark"
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Safari Bookmarks Sync")
         image?.isTemplate = true
         item.button?.image = image
@@ -47,7 +48,17 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
             menu.addItem(info(error, color: .systemRed))
         }
         if state.waitingForSafariToQuit > 0 {
-            menu.addItem(info("\(state.waitingForSafariToQuit) change(s) from other browsers will be applied when you quit Safari"))
+            menu.addItem(info("\(state.waitingForSafariToQuit) bookmark(s) will be added to Safari after it quits"))
+        }
+        switch app.iCloudUpload {
+        case .uploading:
+            menu.addItem(info("Uploading changes to iCloud…"))
+        case .waiting:
+            menu.addItem(action("Upload Waiting Changes to iCloud", #selector(uploadToICloud)))
+        case .notAllowed:
+            menu.addItem(action("Allow Controlling Safari to Upload to iCloud…", #selector(openAutomationSettings)))
+        case nil:
+            break
         }
         if let confirmation = state.deletionConfirmation {
             menu.addItem(action("Confirm Deleting \(confirmation.count) Bookmarks…", #selector(confirmDeletions)))
@@ -59,6 +70,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.addItem(sync)
         menu.addItem(action(app.isReady ? "Settings…" : "Set Up…", #selector(openSettings), key: ","))
         menu.addItem(.separator())
+        menu.addItem(action("About Safari Bookmarks Sync", #selector(about)))
         menu.addItem(action("Quit Safari Bookmarks Sync", #selector(quit), key: "q"))
     }
 
@@ -93,6 +105,19 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     @objc private func confirmDeletions() {
         app.confirmPendingDeletions()
+    }
+
+    @objc private func uploadToICloud() {
+        app.uploadToICloudNow()
+    }
+
+    @objc private func openAutomationSettings() {
+        app.openAutomationSettings()
+    }
+
+    @objc private func about() {
+        NSApp.activate()
+        NSApp.orderFrontStandardAboutPanel(nil)
     }
 
     @objc private func quit() {

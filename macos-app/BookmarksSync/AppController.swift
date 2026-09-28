@@ -15,6 +15,7 @@ final class AppController {
     static let keychainService = "com.lengmuning.bookmarks-sync"
     private static let workerURLKey = "workerURL"
     private static let autoSyncKey = "autoSync"
+    private static let openSafariForICloudKey = "openSafariForICloud"
     private static let periodicInterval: TimeInterval = 10 * 60
 
     let file: SecurityScopedBookmarksFile
@@ -27,7 +28,11 @@ final class AppController {
         terminated: { [weak self] in self?.automaticSync(after: 3) }
     )
     private lazy var realtime = RealtimeListener { [weak self] in self?.automaticSync(after: 2) }
-    private let iCloudNudge = ICloudNudge()
+    private lazy var iCloudUploader = ICloudUploader(
+        file: file,
+        changed: { [weak self] in self?.changed() },
+        finished: { [weak self] uploaded in self?.iCloudUploadFinished(uploaded) }
+    )
     private var toldAboutAutomation = false
 
     private(set) var credentials: Credentials?
@@ -80,6 +85,35 @@ final class AppController {
             startRealtime()
             if newValue { scheduleSync(after: 0) }
             changed()
+        }
+    }
+
+    /// Whether Safari may be opened hidden to upload changes to iCloud.
+    var openSafariForICloud: Bool {
+        get { UserDefaults.standard.object(forKey: Self.openSafariForICloudKey) as? Bool ?? true }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Self.openSafariForICloudKey)
+            if newValue { scheduleICloudUpload(after: 0) } else { iCloudUploader.cancel() }
+            changed()
+        }
+    }
+
+    enum ICloudUploadStatus {
+        case uploading
+        case waiting
+        case notAllowed
+    }
+
+    /// Changes this app wrote that iCloud does not have yet; nil when there are none.
+    var iCloudUpload: ICloudUploadStatus? {
+        #if DEBUG
+        if let debugICloudUpload { return debugICloudUpload }
+        #endif
+        guard state.iCloudUploadPending else { return nil }
+        switch iCloudUploader.status {
+        case .uploading: return .uploading
+        case .notAllowed: return .notAllowed
+        case .idle, .failed: return .waiting
         }
     }
 
@@ -149,28 +183,38 @@ final class AppController {
         guard let engine else { return }
         Task { await engine.noteSafariLaunched() }
         // Give Safari time to load its bookmarks before nudging it.
-        Task { [weak self] in
-            try? await Task.sleep(for: .seconds(5))
-            self?.nudgeICloudIfNeeded()
-        }
+        if state.iCloudUploadPending, isReady { iCloudUploader.schedule(after: 5, openSafari: false) }
     }
 
     /// Changes this app wrote reach iCloud only after Safari saves a change of
-    /// its own; the nudge makes it do that.
-    private func nudgeICloudIfNeeded() {
-        guard state.iCloudUploadPending, let result = iCloudNudge.nudge() else { return }
-        switch result {
-        case .sent:
-            break
-        case .notAllowed:
-            guard !toldAboutAutomation else { return }
+    /// its own; the uploader makes it do that, opening Safari hidden if allowed.
+    private func scheduleICloudUpload(after delay: TimeInterval) {
+        guard state.iCloudUploadPending, isReady else { return }
+        iCloudUploader.schedule(after: delay, openSafari: openSafariForICloud)
+    }
+
+    private func iCloudUploadFinished(_ uploaded: Bool) {
+        if uploaded {
+            // Picks up the file the sync agent wrote and clears the pending state.
+            scheduleSync(after: 1)
+        } else if iCloudUploader.status == .notAllowed, !toldAboutAutomation {
             toldAboutAutomation = true
             notifier.post(
                 title: "Allow controlling Safari",
                 body: "To send bookmarks from your other browsers to iCloud, allow Safari Bookmarks Sync to control Safari in System Settings > Privacy & Security > Automation."
             )
-        case let .failed(message):
-            NSLog("BookmarksSync: could not nudge Safari: %@", message)
+        }
+    }
+
+    /// Uploads to iCloud right away, even after failed attempts.
+    func uploadToICloudNow() {
+        guard isReady else { return }
+        iCloudUploader.uploadNow()
+    }
+
+    func openAutomationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
+            NSWorkspace.shared.open(url)
         }
     }
 
@@ -207,7 +251,8 @@ final class AppController {
             state = await engine.currentState()
             notifyAbout(outcome, before: before)
             if outcome.safariBusy { automaticSync(after: 5) }
-            nudgeICloudIfNeeded()
+            if outcome.imported + outcome.removedFromSafari + outcome.registeredForICloud > 0 { iCloudUploader.resetRetries() }
+            scheduleICloudUpload(after: ICloudUploader.debounce)
         } catch let error as SyncError where error.needsUserAction {
             state = await engine.currentState()
             realtime.stop()
@@ -223,8 +268,8 @@ final class AppController {
     private func notifyAbout(_ outcome: SyncOutcome, before: SyncState) {
         if outcome.waitingForSafariToQuit > 0, before.waitingForSafariToQuit == 0 {
             notifier.post(
-                title: "Changes waiting for Safari",
-                body: "\(outcome.waitingForSafariToQuit) change(s) from your other browsers will be applied when you quit Safari."
+                title: "Bookmarks waiting for Safari",
+                body: "Safari saved over \(outcome.waitingForSafariToQuit) bookmark(s) from your other browsers. They are added again when you quit Safari."
             )
         }
         if let confirmation = outcome.needsConfirmation, before.deletionConfirmation == nil {
@@ -310,6 +355,7 @@ final class AppController {
         }
         realtime.stop()
         pendingSync?.cancel()
+        iCloudUploader.cancel()
         credentialStore.delete()
         credentials = nil
         engine = nil
@@ -328,6 +374,8 @@ final class AppController {
     }
 
     #if DEBUG
+    private var debugICloudUpload: ICloudUploadStatus?
+
     /// In-memory state for rendering the paired settings layout; nothing is saved.
     func debugPreviewPaired() {
         credentials = Credentials(workerURL: URL(string: "https://bookmarks.example.workers.dev")!, pairId: "3f2a9c1e-0000-4000-8000-000000000000", deviceId: "d", token: "t")
@@ -336,6 +384,7 @@ final class AppController {
         state.lastStats = SnapshotStats(received: 261, accepted: 259, skipped: 2, inserted: 0, updated: 0, restored: 0, unchanged: 259, deleted: 0)
         let notices = ProcessInfo.processInfo.arguments.contains("-notices")
         state.waitingForSafariToQuit = notices ? 2 : 0
+        debugICloudUpload = notices ? .waiting : nil
         state.lastError = nil
         state.deletionConfirmation = notices ? DeletionConfirmation(count: 34, sample: []) : nil
         let now = Date().timeIntervalSince1970 * 1000

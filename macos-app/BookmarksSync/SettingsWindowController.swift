@@ -1,13 +1,37 @@
 import AppKit
 import BookmarksSyncCore
 
-/// Settings in the style of System Settings: a status header, notices only
-/// when something needs the user, then grouped rows. Rebuilt from the app
-/// state whenever it changes.
+/// Settings the way macOS apps lay them out: toolbar buttons switch between
+/// panes, the window is titled after the pane and sized to it. Each pane has
+/// grouped rows in the style of System Settings, with notices only when
+/// something needs the user. Rebuilt from the app state whenever it changes.
 @MainActor
-final class SettingsWindowController: NSWindowController {
+final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
+    enum Pane: String, CaseIterable {
+        case general
+        case syncGroup
+
+        var title: String {
+            switch self {
+            case .general: "General"
+            case .syncGroup: "Sync Group"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .general: "gearshape"
+            case .syncGroup: "laptopcomputer.and.iphone"
+            }
+        }
+
+        var identifier: NSToolbarItem.Identifier { NSToolbarItem.Identifier(rawValue) }
+    }
+
     private static let width: CGFloat = 540
     private static let textWidth: CGFloat = 300
+    private static let sectionSpacing: CGFloat = 18
+    private static let paneKey = "settingsPane"
 
     private let app: AppController
     private let stack = NSStackView()
@@ -16,6 +40,7 @@ final class SettingsWindowController: NSWindowController {
     private let workerField = NSTextField()
     private let accessKeyField = NSSecureTextField()
     private var clock: Timer?
+    private(set) var pane = Pane(rawValue: UserDefaults.standard.string(forKey: SettingsWindowController.paneKey) ?? "") ?? .general
 
     private let relative: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
@@ -33,18 +58,25 @@ final class SettingsWindowController: NSWindowController {
 
     init(app: AppController) {
         self.app = app
+        // Like other settings windows: fixed size, no minimize or zoom.
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 600),
-            styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
+            contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 400),
+            styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
-        window.title = "Safari Bookmarks Sync"
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
+        window.identifier = NSUserInterfaceItemIdentifier("settings")
+        window.toolbarStyle = .preference
         window.isReleasedWhenClosed = false
         super.init(window: window)
         buildFrame()
+        let toolbar = NSToolbar(identifier: "Settings")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconAndLabel
+        toolbar.allowsUserCustomization = false
+        window.toolbar = toolbar
+        toolbar.selectedItemIdentifier = pane.identifier
+        window.title = pane.title
         window.setFrameAutosaveName("SettingsWindow")
         if !window.setFrameUsingName("SettingsWindow") { window.center() }
         app.observe { [weak self] in self?.refresh() }
@@ -55,6 +87,8 @@ final class SettingsWindowController: NSWindowController {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     func present() {
+        // Connecting is the first thing to do.
+        if !app.isPaired { select(.syncGroup, animate: false) }
         refresh()
         showWindow(nil)
         NSApp.activate()
@@ -71,13 +105,53 @@ final class SettingsWindowController: NSWindowController {
         }
     }
 
+    func select(_ pane: Pane, animate: Bool = true) {
+        guard pane != self.pane else { return }
+        self.pane = pane
+        UserDefaults.standard.set(pane.rawValue, forKey: Self.paneKey)
+        window?.toolbar?.selectedItemIdentifier = pane.identifier
+        window?.title = pane.title
+        refresh(animate: animate)
+        if pane == .syncGroup, !app.isPaired {
+            window?.makeFirstResponder(workerField.stringValue.isEmpty ? workerField : accessKeyField)
+        }
+    }
+
+    // MARK: Toolbar
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        Pane.allCases.map(\.identifier)
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        Pane.allCases.map(\.identifier)
+    }
+
+    func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        Pane.allCases.map(\.identifier)
+    }
+
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        guard let pane = Pane(rawValue: identifier.rawValue) else { return nil }
+        let item = NSToolbarItem(itemIdentifier: identifier)
+        item.label = pane.title
+        item.image = NSImage(systemSymbolName: pane.symbol, accessibilityDescription: pane.title)
+        item.target = self
+        item.action = #selector(selectPane)
+        return item
+    }
+
+    @objc private func selectPane(_ sender: NSToolbarItem) {
+        if let pane = Pane(rawValue: sender.itemIdentifier.rawValue) { select(pane) }
+    }
+
     // MARK: Frame
 
     private func buildFrame() {
         stack.orientation = .vertical
         stack.alignment = .width
         stack.spacing = 0
-        stack.edgeInsets = NSEdgeInsets(top: 4, left: 24, bottom: 22, right: 24)
+        stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let document = FlippedView()
@@ -105,7 +179,7 @@ final class SettingsWindowController: NSWindowController {
         }
     }
 
-    private func refresh() {
+    private func refresh(animate: Bool = false) {
         let editing = [workerField, accessKeyField].first { field in
             field.currentEditor() != nil
         }
@@ -122,47 +196,68 @@ final class SettingsWindowController: NSWindowController {
             stack.setCustomSpacing(spacing, after: view)
             view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -insets).isActive = true
         }
-        if let editing { window?.makeFirstResponder(editing) }
-        fit()
+        if let editing, editing.window != nil { window?.makeFirstResponder(editing) }
+        fit(animate: animate)
     }
 
-    /// Fits the window to its content, keeping the top edge in place.
-    private func fit() {
-        guard let window else { return }
+    /// Fits the window to the pane, keeping the top edge in place.
+    private func fit(animate: Bool) {
+        guard let window, let content = window.contentView else { return }
         stack.layoutSubtreeIfNeeded()
-        let titlebar = window.frame.height - window.contentLayoutRect.height
+        let chrome = window.frame.height - content.frame.height
         let available = (window.screen ?? NSScreen.main)?.visibleFrame.height ?? 900
-        let height = min(stack.fittingSize.height + titlebar, available - 40)
+        let height = min(stack.fittingSize.height + chrome, available - 40)
+        guard abs(window.frame.height - height) > 0.5 || window.frame.width != Self.width else { return }
         var frame = window.frame
         frame.origin.y += frame.height - height
         frame.size = NSSize(width: Self.width, height: height)
-        window.setFrame(frame, display: true)
+        window.setFrame(frame, display: true, animate: animate && window.isVisible)
     }
 
-    // MARK: Sections
+    // MARK: Panes
 
     private func sections() -> [(NSView, CGFloat)] {
-        var out: [(NSView, CGFloat)] = [(header(), 20)]
-        for notice in notices() { out.append((notice, 8)) }
-        if out.count > 1 { out[out.count - 1].1 = 20 }
-
-        if app.isPaired {
-            out += titled("Sync Group", [workerRow(), groupRow(), pairingRow()])
-            out += titled("Devices", deviceRows())
-        } else {
-            out += titled("Connect", [fieldRow("Worker URL", workerField), fieldRow("Access Key", accessKeyField)], spacingAfter: 10)
-            out.append((connectFooter(), 22))
+        switch pane {
+        case .general: generalSections()
+        case .syncGroup: syncGroupSections()
         }
-        out += titled("Safari", [safariRow()])
-        out += titled("General", [
+    }
+
+    private func generalSections() -> [(NSView, CGFloat)] {
+        var out: [(NSView, CGFloat)] = [(group([statusRow()]), Self.sectionSpacing)]
+        let notices = notices()
+        for notice in notices { out.append((notice, 8)) }
+        if !notices.isEmpty { out[out.count - 1].1 = Self.sectionSpacing }
+        out += titled("Safari", [
+            safariRow(),
+            switchRow(
+                "Upload to iCloud in the background",
+                subtitle: "Opens Safari hidden when needed, then quits it.",
+                isOn: app.openSafariForICloud,
+                action: #selector(toggleOpenSafari)
+            ),
+        ])
+        out.append((group([
             switchRow("Sync automatically", isOn: app.autoSync, action: #selector(toggleAutoSync)),
             switchRow("Open at login", isOn: app.launchAtLogin, action: #selector(toggleLogin)),
-        ])
-        out.append((footer(), 0))
+        ]), 0))
         return out
     }
 
-    private func titled(_ title: String, _ rows: [NSView], spacingAfter: CGFloat = 22) -> [(NSView, CGFloat)] {
+    private func syncGroupSections() -> [(NSView, CGFloat)] {
+        guard app.isPaired else {
+            return [
+                (group([fieldRow("Worker URL", workerField), fieldRow("Access Key", accessKeyField)]), 10),
+                (connectFooter(), 0),
+            ]
+        }
+        var out: [(NSView, CGFloat)] = [(group([workerRow(), groupRow(), pairingRow()]), Self.sectionSpacing)]
+        out += titled("Devices", deviceRows())
+        out.append((leaveFooter(), 0))
+        return out
+    }
+
+    private func titled(_ title: String, _ rows: [NSView]) -> [(NSView, CGFloat)] {
         let heading = label(title, size: 13, weight: .semibold)
         let wrapper = NSView()
         heading.translatesAutoresizingMaskIntoConstraints = false
@@ -172,18 +267,11 @@ final class SettingsWindowController: NSWindowController {
             heading.topAnchor.constraint(equalTo: wrapper.topAnchor),
             heading.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor),
         ])
-        return [(wrapper, 7), (group(rows), spacingAfter)]
+        return [(wrapper, 6), (group(rows), Self.sectionSpacing)]
     }
 
-    private func header() -> NSView {
-        // From the bundle's asset catalog: NSApp.applicationIconImage can be a
-        // cached icon of an older install.
-        let icon = NSImageView(image: NSImage(named: "AppIcon") ?? NSApp.applicationIconImage)
-        icon.imageScaling = .scaleProportionallyUpOrDown
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([icon.widthAnchor.constraint(equalToConstant: 58), icon.heightAnchor.constraint(equalToConstant: 58)])
-
-        let (text, tint) = status()
+    private func statusRow() -> NSView {
+        let (text, detail, tint) = status()
         let indicator: NSView
         if app.isSyncing {
             let spinner = NSProgressIndicator()
@@ -192,41 +280,31 @@ final class SettingsWindowController: NSWindowController {
             spinner.startAnimation(nil)
             indicator = spinner
         } else {
-            let dot = NSImageView(image: symbol("circle.fill", size: 7))
+            let dot = NSImageView(image: symbol("circle.fill", size: 8))
             dot.contentTintColor = tint
             indicator = dot
         }
-        let statusLine = NSStackView(views: [indicator, label(text, size: 12, color: .secondaryLabelColor)])
-        statusLine.spacing = 6
-        statusLine.alignment = .centerY
-
-        let titles = NSStackView(views: [label("Safari Bookmarks Sync", size: 18, weight: .semibold), statusLine])
-        titles.orientation = .vertical
-        titles.alignment = .leading
-        titles.spacing = 3
-
-        let row = NSStackView()
-        row.alignment = .centerY
-        row.spacing = 14
-        row.setViews([icon, titles], in: .leading)
+        var trailing: [NSView] = []
         if app.isPaired {
             let sync = button("Sync Now", #selector(syncNow))
             sync.isEnabled = app.isReady && !app.isSyncing
-            row.setViews([sync], in: .trailing)
+            trailing.append(sync)
+        } else {
+            trailing.append(button("Set Up…", #selector(showSyncGroup)))
         }
-        return row
+        return row(text, subtitle: detail, icon: indicator, iconWidth: 12, trailing: trailing)
     }
 
-    private func status() -> (String, NSColor) {
+    private func status() -> (text: String, detail: String?, tint: NSColor) {
         let state = app.state
-        if !app.isPaired { return ("Not connected", .systemGray) }
-        if !app.hasSafariAccess { return ("Needs access to Safari's bookmarks", .systemOrange) }
-        if app.isSyncing { return ("Syncing…", .systemBlue) }
-        if state.lastError != nil { return ("Sync failed", .systemRed) }
-        guard let last = state.lastSyncAt else { return ("Not synced yet", .systemGray) }
-        var text = "Synced \(relative.localizedString(for: last, relativeTo: Date()))"
-        if let stats = state.lastStats { text += " · \(stats.accepted.formatted()) bookmarks" }
-        return (text, state.deletionConfirmation == nil ? .systemGreen : .systemOrange)
+        if !app.isPaired { return ("Not connected", "Connect this Mac to your sync group to start.", .systemGray) }
+        if !app.hasSafariAccess { return ("Needs access to Safari's bookmarks", nil, .systemOrange) }
+        if app.isSyncing { return ("Syncing…", nil, .systemBlue) }
+        if state.lastError != nil { return ("Sync failed", nil, .systemRed) }
+        guard let last = state.lastSyncAt else { return ("Not synced yet", nil, .systemGray) }
+        let text = "Synced \(relative.localizedString(for: last, relativeTo: Date()))"
+        let detail = state.lastStats.map { "\($0.accepted.formatted()) bookmarks" }
+        return (text, detail, state.deletionConfirmation == nil ? .systemGreen : .systemOrange)
     }
 
     private func notices() -> [NSView] {
@@ -246,10 +324,30 @@ final class SettingsWindowController: NSWindowController {
         if state.waitingForSafariToQuit > 0 {
             let count = state.waitingForSafariToQuit
             out.append(notice(
-                "\(count) \(count == 1 ? "change" : "changes") from other browsers will be applied when you quit Safari.",
+                "Safari saved over \(count) \(count == 1 ? "bookmark" : "bookmarks") from other browsers. They are added again after Safari quits.",
                 symbol: "clock.fill",
                 tint: .secondaryLabelColor
             ))
+        }
+        switch app.iCloudUpload {
+        case .uploading:
+            out.append(notice("Uploading changes to iCloud…", symbol: "icloud.and.arrow.up.fill", tint: .systemBlue))
+        case .waiting:
+            out.append(notice(
+                "Changes from other browsers are waiting to be uploaded to iCloud.",
+                symbol: "icloud.and.arrow.up.fill",
+                tint: .secondaryLabelColor,
+                action: button("Upload Now", #selector(uploadToICloud))
+            ))
+        case .notAllowed:
+            out.append(notice(
+                "To upload changes to iCloud, allow this app to control Safari.",
+                symbol: "icloud.slash.fill",
+                tint: .systemOrange,
+                action: button("Open Settings…", #selector(openAutomationSettings))
+            ))
+        case nil:
+            break
         }
         return out
     }
@@ -303,12 +401,9 @@ final class SettingsWindowController: NSWindowController {
                 remove.identifier = NSUserInterfaceItemIdentifier(device.id)
                 trailing.append(remove)
             }
-            return row(
-                device.name ?? kind,
-                subtitle: subtitle,
-                icon: symbol(device.platform == "safari" ? "desktopcomputer" : "globe", size: 17),
-                trailing: trailing
-            )
+            let icon = NSImageView(image: symbol(device.platform == "safari" ? "desktopcomputer" : "globe", size: 17))
+            icon.contentTintColor = .secondaryLabelColor
+            return row(device.name ?? kind, subtitle: subtitle, icon: icon, trailing: trailing)
         }
     }
 
@@ -340,12 +435,9 @@ final class SettingsWindowController: NSWindowController {
         return row
     }
 
-    private func footer() -> NSView {
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+    private func leaveFooter() -> NSView {
         let row = NSStackView()
-        row.alignment = .centerY
-        if app.isPaired { row.setViews([button("Leave Sync Group…", #selector(leaveGroup))], in: .leading) }
-        row.setViews([label("Version \(version)", size: 11, color: .tertiaryLabelColor)], in: .trailing)
+        row.setViews([button("Leave Sync Group…", #selector(leaveGroup))], in: .leading)
         return row
     }
 
@@ -358,7 +450,7 @@ final class SettingsWindowController: NSWindowController {
         inner.spacing = 0
         for (index, row) in rows.enumerated() {
             if index > 0 {
-                let line = separator(inset: (row as? RowView)?.hasIcon == true ? 50 : 14)
+                let line = separator(inset: (row as? RowView)?.textInset ?? 14)
                 inner.addArrangedSubview(line)
                 line.widthAnchor.constraint(equalTo: inner.widthAnchor).isActive = true
             }
@@ -371,41 +463,41 @@ final class SettingsWindowController: NSWindowController {
     private func row(
         _ title: String,
         subtitle: String? = nil,
-        icon: NSImage? = nil,
+        icon: NSView? = nil,
+        iconWidth: CGFloat = 26,
         trailing: [NSView] = [],
         titleColor: NSColor = .labelColor,
-        textWidth: CGFloat = SettingsWindowController.textWidth
+        textWidth: CGFloat? = nil
     ) -> NSView {
         let titleLabel = label(title, size: 13, color: titleColor)
         var texts: [NSView] = [titleLabel]
-        if let subtitle { texts.append(wrapping(subtitle, size: 11, color: .secondaryLabelColor, width: textWidth)) }
+        if let subtitle {
+            texts.append(wrapping(subtitle, size: 11, color: .secondaryLabelColor, width: textWidth ?? Self.textWidth))
+        }
         let textStack = NSStackView(views: texts)
         textStack.orientation = .vertical
         textStack.alignment = .leading
         textStack.spacing = 2
 
-        var leading: [NSView] = []
-        if let icon {
-            let image = NSImageView(image: icon)
-            image.contentTintColor = .secondaryLabelColor
-            image.translatesAutoresizingMaskIntoConstraints = false
-            image.widthAnchor.constraint(equalToConstant: 26).isActive = true
-            leading.append(image)
-        }
-        leading.append(textStack)
-
         let row = RowView()
-        row.hasIcon = icon != nil
         row.alignment = .centerY
         row.spacing = 10
-        row.edgeInsets = NSEdgeInsets(top: 9, left: 14, bottom: 9, right: 14)
+        row.edgeInsets = NSEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+        var leading: [NSView] = []
+        if let icon {
+            icon.translatesAutoresizingMaskIntoConstraints = false
+            icon.widthAnchor.constraint(equalToConstant: iconWidth).isActive = true
+            leading.append(icon)
+            row.textInset = 14 + iconWidth + row.spacing
+        }
+        leading.append(textStack)
         row.setViews(leading, in: .leading)
         row.setViews(trailing, in: .trailing)
         // The row grows with a wrapped description instead of clipping it.
         NSLayoutConstraint.activate([
-            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 42),
-            textStack.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 9),
-            row.bottomAnchor.constraint(greaterThanOrEqualTo: textStack.bottomAnchor, constant: 9),
+            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 40),
+            textStack.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 8),
+            row.bottomAnchor.constraint(greaterThanOrEqualTo: textStack.bottomAnchor, constant: 8),
         ])
         return row
     }
@@ -414,13 +506,13 @@ final class SettingsWindowController: NSWindowController {
         row(title, trailing: [field])
     }
 
-    private func switchRow(_ title: String, isOn: Bool, action: Selector) -> NSView {
+    private func switchRow(_ title: String, subtitle: String? = nil, isOn: Bool, action: Selector) -> NSView {
         let toggle = NSSwitch()
         toggle.controlSize = .small
         toggle.state = isOn ? .on : .off
         toggle.target = self
         toggle.action = action
-        return row(title, trailing: [toggle])
+        return row(title, subtitle: subtitle, trailing: [toggle])
     }
 
     private func notice(_ text: String, symbol name: String, tint: NSColor, action: NSButton? = nil) -> NSView {
@@ -432,12 +524,12 @@ final class SettingsWindowController: NSWindowController {
         let row = NSStackView()
         row.alignment = .centerY
         row.spacing = 10
-        row.edgeInsets = NSEdgeInsets(top: 10, left: 14, bottom: 10, right: 14)
+        row.edgeInsets = NSEdgeInsets(top: 9, left: 14, bottom: 9, right: 14)
         row.setViews([icon, message], in: .leading)
         if let action { row.setViews([action], in: .trailing) }
         NSLayoutConstraint.activate([
-            message.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 10),
-            row.bottomAnchor.constraint(greaterThanOrEqualTo: message.bottomAnchor, constant: 10),
+            message.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 9),
+            row.bottomAnchor.constraint(greaterThanOrEqualTo: message.bottomAnchor, constant: 9),
         ])
         return GroupView(content: row)
     }
@@ -465,7 +557,7 @@ final class SettingsWindowController: NSWindowController {
         return field
     }
 
-    private func wrapping(_ text: String, size: CGFloat, color: NSColor, width: CGFloat = SettingsWindowController.textWidth) -> NSTextField {
+    private func wrapping(_ text: String, size: CGFloat, color: NSColor, width: CGFloat) -> NSTextField {
         let field = NSTextField(wrappingLabelWithString: text)
         field.font = .systemFont(ofSize: size)
         field.textColor = color
@@ -553,8 +645,20 @@ final class SettingsWindowController: NSWindowController {
         Task { await app.syncNow() }
     }
 
+    @objc private func showSyncGroup(_ sender: NSButton) {
+        select(.syncGroup)
+    }
+
     @objc private func reviewDeletions(_ sender: NSButton) {
         app.confirmPendingDeletions()
+    }
+
+    @objc private func uploadToICloud(_ sender: NSButton) {
+        app.uploadToICloudNow()
+    }
+
+    @objc private func openAutomationSettings(_ sender: NSButton) {
+        app.openAutomationSettings()
     }
 
     @objc private func newPairingCode(_ sender: NSButton) {
@@ -617,6 +721,10 @@ final class SettingsWindowController: NSWindowController {
         }
     }
 
+    @objc private func toggleOpenSafari(_ sender: NSSwitch) {
+        app.openSafariForICloud = sender.state == .on
+    }
+
     @objc private func toggleAutoSync(_ sender: NSSwitch) {
         app.autoSync = sender.state == .on
     }
@@ -631,10 +739,9 @@ final class SettingsWindowController: NSWindowController {
     }
 }
 
-/// A row; remembers whether it starts with an icon so separators line up
-/// with the text.
+/// A row; remembers where its text starts so separators line up with it.
 private final class RowView: NSStackView {
-    var hasIcon = false
+    var textInset: CGFloat = 14
 }
 
 /// The rounded, slightly lighter box around a group of rows.

@@ -131,18 +131,69 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertEqual(store.load().pendingImports.map(\.url), ["https://chrome.example/"])
     }
 
-    func testWaitsForSafariToQuitBeforeWriting() async throws {
+    func testWritesWhileSafariIsRunning() async throws {
+        api.browserRows = [chromeAddition]
+        safari.isSafariRunning = true
+        let outcome = try await makeEngine().sync()
+        XCTAssertEqual(outcome.imported, 1)
+        XCTAssertEqual(outcome.waitingForSafariToQuit, 0)
+        XCTAssertEqual(file.backups.count, 1, "backup before writing")
+        XCTAssertTrue(try urlsInFile().contains(chromeAddition.url))
+        XCTAssertEqual(store.load().pendingImports.first?.whileSafariRan, true)
+    }
+
+    func testConfirmsAnImportARunningSafariReloadedAndSaved() async throws {
         api.browserRows = [chromeAddition]
         safari.isSafariRunning = true
         let engine = makeEngine()
-        let outcome = try await engine.sync()
-        XCTAssertEqual(outcome.waitingForSafariToQuit, 1)
-        XCTAssertTrue(file.writes.isEmpty)
+        _ = try await engine.sync()
+
+        file.safariRewrites(Fixture.plist(file.data))
+        _ = try await engine.sync()
+        XCTAssertTrue(store.load().pendingImports.isEmpty)
+        XCTAssertTrue(store.load().lostBySafari.isEmpty)
+        XCTAssertTrue(api.browserRows.isEmpty, "now owned by Safari")
+    }
+
+    func testWritesAgainAfterSafariQuitWhatARunningSafariSavedOver() async throws {
+        api.browserRows = [chromeAddition]
+        safari.isSafariRunning = true
+        let engine = makeEngine()
+        _ = try await engine.sync()
+
+        // Safari saves the copy it had before the write.
+        file.safariRewrites(Fixture.root())
+        let lost = try await engine.sync()
+        XCTAssertEqual(lost.deletedInSafari, 0, "not deleted in the browsers")
+        XCTAssertEqual(lost.waitingForSafariToQuit, 1)
+        XCTAssertEqual(api.snapshots.last?.deletedImports, [])
+        XCTAssertEqual(api.browserRows, [chromeAddition])
+        XCTAssertEqual(file.writes.count, 1, "not written again while Safari runs")
+        XCTAssertEqual(store.load().lostBySafari, [chromeAddition.url])
 
         safari.isSafariRunning = false
         let later = try await engine.sync()
         XCTAssertEqual(later.imported, 1)
-        XCTAssertEqual(store.load().waitingForSafariToQuit, 0)
+        XCTAssertEqual(later.waitingForSafariToQuit, 0)
+        XCTAssertTrue(try urlsInFile().contains(chromeAddition.url))
+        XCTAssertTrue(store.load().lostBySafari.isEmpty)
+        XCTAssertNil(store.load().pendingImports.first?.whileSafariRan)
+    }
+
+    func testForgetsASavedOverImportThatWasDeletedInABrowser() async throws {
+        api.browserRows = [chromeAddition]
+        safari.isSafariRunning = true
+        let engine = makeEngine()
+        _ = try await engine.sync()
+        file.safariRewrites(Fixture.root())
+        _ = try await engine.sync()
+        XCTAssertEqual(store.load().lostBySafari, [chromeAddition.url])
+
+        api.browserRows = []
+        file.safariRewrites(Fixture.root())
+        let outcome = try await engine.sync()
+        XCTAssertEqual(outcome.waitingForSafariToQuit, 0)
+        XCTAssertTrue(store.load().lostBySafari.isEmpty)
     }
 
     func testDoesNotReuploadAnUnchangedFile() async throws {
@@ -215,18 +266,14 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertNotNil(root["Sync"], "iCloud metadata is kept")
     }
 
-    func testWaitsForSafariToQuitBeforeRemoving() async throws {
+    func testRemovesWhileSafariIsRunning() async throws {
         api.pendingDeletions = ["https://news.example/"]
         safari.isSafariRunning = true
-        let engine = makeEngine()
-        let outcome = try await engine.sync()
-        XCTAssertEqual(outcome.waitingForSafariToQuit, 1)
-        XCTAssertTrue(file.writes.isEmpty)
-
-        safari.isSafariRunning = false
-        let later = try await engine.sync()
-        XCTAssertEqual(later.removedFromSafari, 1)
+        let outcome = try await makeEngine().sync()
+        XCTAssertEqual(outcome.removedFromSafari, 1)
+        XCTAssertEqual(outcome.waitingForSafariToQuit, 0)
         XCTAssertFalse(try urlsInFile().contains("https://news.example/"))
+        XCTAssertEqual(api.pendingDeletions, [])
     }
 
     func testRemovesBookmarksStoredUnderANonCanonicalURL() async throws {
@@ -247,6 +294,8 @@ final class SyncEngineTests: XCTestCase {
         let json = #"{"pendingImports":[{"url":"https://a.example/","importedAt":10}],"parkedImports":["https://gone.example/"],"safariLaunchedSinceImport":true,"waitingForSafariToQuit":0}"#
         let state = try JSONDecoder().decode(SyncState.self, from: Data(json.utf8))
         XCTAssertEqual(state.pendingImports.map(\.url), ["https://a.example/"])
+        XCTAssertNil(state.pendingImports[0].whileSafariRan)
+        XCTAssertEqual(state.lostBySafari, [])
         XCTAssertEqual(state.deletedImports, ["https://gone.example/"], "dropped imports count as deleted in Safari")
         XCTAssertTrue(state.safariLaunchedSinceImport)
         XCTAssertEqual(state.canonicalMap, [:])

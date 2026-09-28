@@ -12,6 +12,7 @@ public struct SyncOutcome: Equatable, Sendable {
     public var removedFromSafari = 0
     /// Bookmarks from other browsers that the user deleted in Safari.
     public var deletedInSafari = 0
+    /// Imports a running Safari saved over, waiting for it to quit.
     public var waitingForSafariToQuit = 0
     /// Safari or its iCloud sync agent was writing the plist; try again soon.
     public var safariBusy = false
@@ -25,7 +26,7 @@ public struct SyncOutcome: Equatable, Sendable {
 
 /// One sync cycle for Safari (docs/SYNC-V2.md): upload the plist as a
 /// snapshot, then apply what changed in other browsers (additions and
-/// deletions) to the plist while Safari is not running. Runs are serialized.
+/// deletions) to the plist, also while Safari is running. Runs are serialized.
 public actor SyncEngine {
     /// An import still present this long after writing it counts as kept even
     /// if Safari never rewrote the file.
@@ -131,7 +132,19 @@ public actor SyncEngine {
         let canonical: (String) -> String = { map[$0] ?? $0 }
         let presentCanonical = Set(present.map(canonical))
         let deletedHere = Set(state.deletedImports)
-        let toImport = pending.filter { !presentCanonical.contains($0.url) && !deletedHere.contains($0.url) }
+        var toImport = pending.filter { !presentCanonical.contains($0.url) && !deletedHere.contains($0.url) }
+        state.lostBySafari.removeAll { url in !toImport.contains { $0.url == url } }
+        // A running Safari reloads the file after the app writes it. What it
+        // saved over once waits for it to quit instead.
+        let safariRunning = safari.isSafariRunning
+        if safariRunning {
+            let lost = Set(state.lostBySafari)
+            toImport.removeAll { lost.contains($0.url) }
+            state.waitingForSafariToQuit = lost.count
+        } else {
+            state.waitingForSafariToQuit = 0
+        }
+        outcome.waitingForSafariToQuit = state.waitingForSafariToQuit
         let toRemove = Set(deletions).intersection(presentCanonical)
         var unsynced = 0
         if !state.registeredUnsyncedItems {
@@ -139,15 +152,7 @@ public actor SyncEngine {
             unsynced = probe.registerUnsyncedItems()
             if unsynced == 0 { state.registeredUnsyncedItems = true }
         }
-        guard !toImport.isEmpty || !toRemove.isEmpty || unsynced > 0 else {
-            state.waitingForSafariToQuit = 0
-            return outcome
-        }
-        guard !safari.isSafariRunning else {
-            state.waitingForSafariToQuit = toImport.count + toRemove.count
-            outcome.waitingForSafariToQuit = state.waitingForSafariToQuit
-            return outcome
-        }
+        guard !toImport.isEmpty || !toRemove.isEmpty || unsynced > 0 else { return outcome }
 
         var updated = document
         let added = updated.add(toImport, now: now())
@@ -155,11 +160,6 @@ public actor SyncEngine {
         let registered = unsynced > 0 ? updated.registerUnsyncedItems() : 0
         let newData = try updated.data()
         _ = try file.backup(data)
-        guard !safari.isSafariRunning else {
-            state.waitingForSafariToQuit = toImport.count + toRemove.count
-            outcome.waitingForSafariToQuit = state.waitingForSafariToQuit
-            return outcome
-        }
         guard let written = try file.replace(data, with: newData) else {
             outcome.safariBusy = true
             return outcome
@@ -172,8 +172,8 @@ public actor SyncEngine {
         state.lastOwnWrite = written
         if !added.isEmpty { state.safariLaunchedSinceImport = false }
         state.pendingImports.removeAll { removed.contains(canonical($0.url)) }
-        state.pendingImports += added.map { PendingImport(url: $0, importedAt: now()) }
-        state.waitingForSafariToQuit = 0
+        state.pendingImports += added.map { PendingImport(url: $0, importedAt: now(), whileSafariRan: safariRunning ? true : nil) }
+        state.lostBySafari.removeAll { added.contains($0) }
         outcome.imported = added.count
         outcome.removedFromSafari = removed.count
 
@@ -223,6 +223,11 @@ public actor SyncEngine {
     /// Decides which earlier imports Safari kept (confirmed), lost (deleted in
     /// Safari, to be deleted in the browsers too) or has not looked at yet
     /// (still unconfirmed). Returns how many were found deleted now.
+    ///
+    /// An import written while Safari was running and missing from Safari's
+    /// next save is taken as saved over, not deleted: it is written again once
+    /// Safari has quit. At worst a bookmark deleted in Safari right after it
+    /// arrived comes back once; it is never deleted everywhere by mistake.
     private func reconcilePendingImports(present: Set<String>, modified: Date) -> Int {
         guard !state.pendingImports.isEmpty else { return 0 }
         let rewrittenSinceImport = state.lastOwnWrite.map { abs(modified.timeIntervalSince($0)) > Self.modificationTolerance } ?? true
@@ -233,7 +238,9 @@ public actor SyncEngine {
                 let old = now().timeIntervalSince(item.importedAt) > Self.confirmationFallback
                 if !(rewrittenSinceImport || old) { stillPending.append(item) }
             } else if rewrittenSinceImport || state.safariLaunchedSinceImport {
-                if !state.deletedImports.contains(item.url) {
+                if item.whileSafariRan == true {
+                    if !state.lostBySafari.contains(item.url) { state.lostBySafari.append(item.url) }
+                } else if !state.deletedImports.contains(item.url) {
                     state.deletedImports.append(item.url)
                     deleted += 1
                 }

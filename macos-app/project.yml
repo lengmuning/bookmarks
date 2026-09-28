@@ -9,8 +9,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "2.1.0"
-    CURRENT_PROJECT_VERSION: "5"
+    MARKETING_VERSION: "2.2.0"
+    CURRENT_PROJECT_VERSION: "6"
     DEVELOPMENT_TEAM: C7LPKS46N5
     ENABLE_HARDENED_RUNTIME: YES
     ENABLE_USER_SCRIPT_SANDBOXING: YES
@@ -52,7 +52,7 @@ targets:
         com.apple.security.network.client: true
         com.apple.security.files.user-selected.read-write: true
         com.apple.security.files.bookmarks.app-scope: true
-        # Nudging Safari's iCloud sync (ICloudNudge) through AppleScript.
+        # Nudging Safari's iCloud sync (ICloudUploader) through Apple Events.
         com.apple.security.automation.apple-events: true
         com.apple.security.temporary-exception.apple-events: [com.apple.Safari]
     settings:

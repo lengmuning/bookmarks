@@ -5,6 +5,15 @@ import Foundation
 public struct PendingImport: Codable, Equatable, Sendable {
     public let url: String
     public let importedAt: Date
+    /// Written while Safari was running. If Safari's next save does not have
+    /// it, Safari saved over the write; it is not taken as deleted.
+    public var whileSafariRan: Bool?
+
+    public init(url: String, importedAt: Date, whileSafariRan: Bool? = nil) {
+        self.url = url
+        self.importedAt = importedAt
+        self.whileSafariRan = whileSafariRan
+    }
 }
 
 public struct SyncState: Codable, Equatable, Sendable {
@@ -22,11 +31,12 @@ public struct SyncState: Codable, Equatable, Sendable {
     /// Digest of the last snapshot the server accepted, to skip re-uploads.
     public var lastUploadDigest: String?
     public var deletionConfirmation: DeletionConfirmation?
-    /// Changes from other browsers (additions and deletions) waiting for
-    /// Safari to quit.
+    /// Imports a running Safari saved over; written again once Safari has quit.
+    public var lostBySafari: [String] = []
+    /// How many of `lostBySafari` are waiting for Safari to quit.
     public var waitingForSafariToQuit = 0
     /// This app wrote change entries into the plist that Safari's iCloud sync
-    /// has not uploaded yet; Safari needs a nudge once it runs.
+    /// has not uploaded yet; Safari has to save a change to upload them.
     public var iCloudUploadPending = false
     /// Bookmarks written by versions before 2.1 never reached iCloud; they are
     /// registered for upload once.
@@ -39,7 +49,7 @@ public struct SyncState: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case pendingImports, deletedImports, canonicalMap, lastOwnWrite, safariLaunchedSinceImport, lastUploadDigest
-        case deletionConfirmation, waitingForSafariToQuit, iCloudUploadPending, registeredUnsyncedItems
+        case deletionConfirmation, lostBySafari, waitingForSafariToQuit, iCloudUploadPending, registeredUnsyncedItems
         case lastSyncAt, lastStats, lastError
         /// Written by 2.0.1 and earlier: imports Safari "dropped", now treated
         /// as deleted in Safari.
@@ -58,6 +68,7 @@ public struct SyncState: Codable, Equatable, Sendable {
         safariLaunchedSinceImport = try c.decodeIfPresent(Bool.self, forKey: .safariLaunchedSinceImport) ?? false
         lastUploadDigest = try c.decodeIfPresent(String.self, forKey: .lastUploadDigest)
         deletionConfirmation = try c.decodeIfPresent(DeletionConfirmation.self, forKey: .deletionConfirmation)
+        lostBySafari = try c.decodeIfPresent([String].self, forKey: .lostBySafari) ?? []
         waitingForSafariToQuit = try c.decodeIfPresent(Int.self, forKey: .waitingForSafariToQuit) ?? 0
         iCloudUploadPending = try c.decodeIfPresent(Bool.self, forKey: .iCloudUploadPending) ?? false
         registeredUnsyncedItems = try c.decodeIfPresent(Bool.self, forKey: .registeredUnsyncedItems) ?? false
@@ -75,6 +86,7 @@ public struct SyncState: Codable, Equatable, Sendable {
         try c.encode(safariLaunchedSinceImport, forKey: .safariLaunchedSinceImport)
         try c.encodeIfPresent(lastUploadDigest, forKey: .lastUploadDigest)
         try c.encodeIfPresent(deletionConfirmation, forKey: .deletionConfirmation)
+        try c.encode(lostBySafari, forKey: .lostBySafari)
         try c.encode(waitingForSafariToQuit, forKey: .waitingForSafariToQuit)
         try c.encode(iCloudUploadPending, forKey: .iCloudUploadPending)
         try c.encode(registeredUnsyncedItems, forKey: .registeredUnsyncedItems)

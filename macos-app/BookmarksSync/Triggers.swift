@@ -39,8 +39,8 @@ final class FileWatcher {
     }
 }
 
-/// Watches Safari starting and quitting: imports wait for Safari to quit, and a
-/// Safari launch after an import matters for confirming it.
+/// Watches Safari starting and quitting: a Safari launch after an import
+/// matters for confirming it, and imports Safari saved over wait for it to quit.
 @MainActor
 final class SafariMonitor {
     nonisolated static let bundleIdentifier = "com.apple.Safari"
@@ -70,37 +70,231 @@ final class SafariMonitor {
     }
 }
 
-/// Gets Safari's iCloud sync agent to upload the change entries this app
-/// wrote: Safari has to save a bookmark change of its own first, so the
-/// `ICloudTrigger` Reading List item is added again through Safari's
-/// AppleScript (docs/SYNC-V2.md, "iCloud").
+/// Gets the change entries this app wrote into the plist uploaded to iCloud
+/// (docs/SYNC-V2.md, "iCloud"). Safari's sync agent uploads only after Safari
+/// saves a bookmark change of its own, so Safari is asked to add the
+/// `ICloudTrigger` Reading List item again, until `Sync.Changes` is empty.
+/// When Safari is not running it is opened hidden and quit afterwards, unless
+/// the user started using it in the meantime.
 @MainActor
-final class ICloudNudge {
+final class ICloudUploader {
+    enum Status: Equatable {
+        case idle
+        case uploading
+        /// The user has not allowed this app to control Safari.
+        case notAllowed
+        /// The last attempt ended before iCloud took the changes.
+        case failed
+    }
+
+    /// Writes this close together are uploaded in one go.
+    static let debounce: TimeInterval = 60
+    private static let timeout: TimeInterval = 120
+    /// Safari saves about 10 seconds after a change and the agent uploads
+    /// right after; a nudge that got no upload by then is sent again.
+    private static let nudgeInterval: TimeInterval = 30
+    private static let pollInterval: TimeInterval = 5
+    /// Time for a Safari opened by the app to load its bookmarks.
+    private static let launchDelay: TimeInterval = 8
+    private static let retryDelays: [TimeInterval] = [10 * 60, 30 * 60, 2 * 60 * 60]
+    /// After this many failed attempts in a row, Safari is no longer opened
+    /// for retries (only a Safari the user started is nudged).
+    private static let maxFailuresOpeningSafari = 5
+
+    private let file: SecurityScopedBookmarksFile
+    private let changed: () -> Void
+    private let finished: (_ uploaded: Bool) -> Void
+    private(set) var status: Status = .idle
+    private var scheduled: Task<Void, Never>?
+    private var running = false
+    private var failures = 0
+    private var notBefore: Date?
+
+    init(file: SecurityScopedBookmarksFile, changed: @escaping () -> Void, finished: @escaping (_ uploaded: Bool) -> Void) {
+        self.file = file
+        self.changed = changed
+        self.finished = finished
+    }
+
+    /// Starts an attempt after `delay` (later after failed attempts), replacing
+    /// one that is waiting to start. `openSafari`: whether Safari may be
+    /// opened when it is not running.
+    func schedule(after delay: TimeInterval, openSafari: Bool) {
+        guard !running else { return }
+        let wait = max(delay, notBefore?.timeIntervalSinceNow ?? 0)
+        scheduled?.cancel()
+        scheduled = Task { [weak self] in
+            if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+            guard !Task.isCancelled else { return }
+            await self?.run(openSafari: openSafari)
+        }
+    }
+
+    /// New changes: the next attempt does not wait for earlier failures.
+    func resetRetries() {
+        failures = 0
+        notBefore = nil
+    }
+
+    /// The user asked: tries right away, opening Safari if needed, also after
+    /// Automation was not allowed (the user may have allowed it since).
+    func uploadNow() {
+        guard !running else { return }
+        resetRetries()
+        status = .idle
+        schedule(after: 0, openSafari: true)
+    }
+
+    func cancel() {
+        scheduled?.cancel()
+        scheduled = nil
+        if !running { status = .idle }
+    }
+
+    private func run(openSafari: Bool) async {
+        guard let pending = await pendingChanges() else { return }
+        guard pending > 0 else {
+            // Uploaded meanwhile (Safari or another device saved a change).
+            status = .idle
+            changed()
+            finished(true)
+            return
+        }
+        var safari = Self.runningSafari()
+        let mayOpen = openSafari && status != .notAllowed && failures < Self.maxFailuresOpeningSafari
+        guard safari != nil || mayOpen else { return }
+        running = true
+        status = .uploading
+        changed()
+
+        var opened: NSRunningApplication?
+        var usedByUser = false
+        let observer = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            MainActor.assumeIsolated {
+                if let opened, app?.processIdentifier == opened.processIdentifier { usedByUser = true }
+            }
+        }
+        defer { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
+
+        if safari == nil {
+            opened = await Self.openHidden()
+            safari = opened
+            if let opened {
+                opened.hide()
+                try? await Task.sleep(for: .seconds(Self.launchDelay))
+            }
+        }
+        var result = Status.failed
+        if let safari { result = await nudgeUntilUploaded(safari) }
+        if let opened, !usedByUser { await quit(opened) }
+
+        running = false
+        status = result
+        if result == .idle {
+            resetRetries()
+        } else {
+            notBefore = Date().addingTimeInterval(Self.retryDelays[min(failures, Self.retryDelays.count - 1)])
+            failures += 1
+        }
+        changed()
+        finished(result == .idle)
+    }
+
+    /// Nudges Safari until the plist has no pending change entries left.
+    private func nudgeUntilUploaded(_ safari: NSRunningApplication) async -> Status {
+        let deadline = Date().addingTimeInterval(Self.timeout)
+        while Date() < deadline, !safari.isTerminated {
+            switch await SafariScript.addTrigger(to: safari.processIdentifier) {
+            case .sent:
+                break
+            case .notAllowed:
+                return .notAllowed
+            case let .failed(message):
+                NSLog("BookmarksSync: could not nudge Safari: %@", message)
+            }
+            let next = min(Date().addingTimeInterval(Self.nudgeInterval), deadline)
+            while Date() < next {
+                try? await Task.sleep(for: .seconds(Self.pollInterval))
+                if await pendingChanges() == 0 { return .idle }
+            }
+        }
+        return .failed
+    }
+
+    /// Quits a Safari this app opened, unless the user has brought it forward.
+    private func quit(_ safari: NSRunningApplication) async {
+        // Safari reloads the file after the sync agent writes it.
+        try? await Task.sleep(for: .seconds(3))
+        guard !safari.isTerminated, safari.isHidden, !safari.isActive else { return }
+        safari.terminate()
+    }
+
+    /// Change entries in the plist waiting for upload; nil when it cannot be read.
+    private func pendingChanges() async -> Int? {
+        let file = self.file
+        return await Task.detached {
+            guard let data = try? file.read().data, let document = try? SafariBookmarksDocument(data: data) else { return nil }
+            return document.pendingChangeCount
+        }.value
+    }
+
+    private static func runningSafari() -> NSRunningApplication? {
+        NSRunningApplication.runningApplications(withBundleIdentifier: SafariMonitor.bundleIdentifier).first { !$0.isTerminated }
+    }
+
+    private static func openHidden() async -> NSRunningApplication? {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: SafariMonitor.bundleIdentifier) else { return nil }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = false
+        configuration.hides = true
+        configuration.addsToRecentItems = false
+        do {
+            return try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+        } catch {
+            NSLog("BookmarksSync: could not open Safari: %@", error.localizedDescription)
+            return nil
+        }
+    }
+}
+
+/// Safari's `add reading list item` command, sent as an Apple Event so the
+/// main thread does not wait for Safari.
+enum SafariScript {
     enum Result: Equatable {
         case sent
         case notAllowed
         case failed(String)
     }
 
-    /// Safari process last nudged, so each launch is nudged at most once.
-    private var nudgedSafari: pid_t?
+    /// Adds `ICloudTrigger` to the Reading List of the Safari process `pid`.
+    /// Safari replaces the item if it is already there.
+    static func addTrigger(to pid: pid_t) async -> Result {
+        await Task.detached {
+            let event = NSAppleEventDescriptor(
+                eventClass: code("sfri"),
+                eventID: code("arli"),
+                targetDescriptor: NSAppleEventDescriptor(processIdentifier: pid),
+                returnID: -1, // kAutoGenerateReturnID
+                transactionID: 0 // kAnyTransactionID
+            )
+            event.setParam(NSAppleEventDescriptor(string: ICloudTrigger.url), forKeyword: code("----"))
+            event.setParam(NSAppleEventDescriptor(string: ICloudTrigger.title), forKeyword: code("rlit"))
+            do {
+                _ = try event.sendEvent(options: [.waitForReply, .canInteract], timeout: 60)
+                return .sent
+            } catch {
+                // -1743: the user has not allowed this app to control Safari.
+                if (error as NSError).code == -1743 { return .notAllowed }
+                return .failed(error.localizedDescription)
+            }
+        }.value
+    }
 
-    /// Asks the running Safari to add the trigger item, once per Safari launch.
-    /// Returns nil when Safari is not running or was already nudged.
-    func nudge() -> Result? {
-        guard let safari = NSRunningApplication.runningApplications(withBundleIdentifier: SafariMonitor.bundleIdentifier).first,
-              safari.processIdentifier != nudgedSafari
-        else { return nil }
-        nudgedSafari = safari.processIdentifier
-        let source = """
-            tell application id "\(SafariMonitor.bundleIdentifier)" to add reading list item "\(ICloudTrigger.url)" with title "\(ICloudTrigger.title)"
-            """
-        var error: NSDictionary?
-        NSAppleScript(source: source)?.executeAndReturnError(&error)
-        guard let error else { return .sent }
-        // -1743: the user has not allowed this app to control Safari.
-        if error[NSAppleScript.errorNumber] as? Int == -1743 { return .notAllowed }
-        return .failed(error[NSAppleScript.errorMessage] as? String ?? "AppleScript error")
+    private static func code(_ text: String) -> FourCharCode {
+        text.utf8.reduce(0) { $0 << 8 | FourCharCode($1) }
     }
 }
 

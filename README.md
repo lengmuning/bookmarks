@@ -8,8 +8,8 @@
 
 - **以 Safari 为准。** 书签在哪个文件夹、叫什么名字，都以 Safari 为准。浏览器里已经存在的同网址书签，不管放在哪里，都会被移动到 Safari 对应的分类里，不会重复新建。浏览器里的同步位置是 `其他书签 / Safari Bookmarks / <Safari 的文件夹>`。
 - **一个 Access Key 就是一个用户，对应一个同步组（Pair ID）。** Mac 用 Access Key 连接；Chrome 和 Firefox 用 Mac App 生成的一次性配对码加入同一个组。同一个 key 以后再连接（换 Mac、重装）会回到原来的组，不会生成新的 Pair ID。
-- **在浏览器里新增的书签会同步回 Safari。** 在 Chrome/Firefox 的 `Safari Bookmarks` 文件夹里新增的书签，会在 Safari 退出后写入 Safari。
-- **删除双向同步。** 在 Safari 删除的书签，各浏览器会跟着删除；在 Chrome 或 Firefox 删除的书签，另一个浏览器会跟着删除，Mac App 也会在 Safari 没运行时把它从 Safari 的书签文件里删掉（删之前先备份）。把书签移出 `Safari Bookmarks` 文件夹也算删除。
+- **在浏览器里新增的书签会同步回 Safari。** 在 Chrome/Firefox 的 `Safari Bookmarks` 文件夹里新增的书签，会直接写入 Safari（Safari 开着也可以），再经 iCloud 同步到你的其他苹果设备。
+- **删除双向同步。** 在 Safari 删除的书签，各浏览器会跟着删除；在 Chrome 或 Firefox 删除的书签，另一个浏览器会跟着删除，Mac App 也会把它从 Safari 的书签文件里删掉（删之前先备份）。把书签移出 `Safari Bookmarks` 文件夹也算删除。
 - **移动和改名以 Safari 为准。** 在浏览器里移动或改名 Safari 的书签，会被放回原位；要调整分类请在 Safari 里做。
 - **大批量删除需要确认。** 在 Safari 一次消失的书签超过 20 条且超过 10% 时，Mac App 会先请你确认；在浏览器里 10 分钟内删除的 Safari 书签超过同样的数量时，书签会先被放回，扩展图标上出现红色 "!"，在扩展弹窗里确认后才会在所有地方删除。这是为了防止误删或文件异常。
 - **同一网址在数据库里只有一行。** 每个同步组里，一个网址只有一条记录，移动或改名只更新这一行。删除记录保留 90 天后自动清理。不同用户的数据互相隔离，不共用记录。
@@ -111,9 +111,9 @@ curl -X DELETE $W/v2/admin/groups/<pair_id> -H "$A"
 ### Mac App
 
 1. 从 [Releases](../../releases/latest) 下载 `Safari-Bookmarks-Sync-<版本>.dmg`（也可以用 `macos-app/scripts/build-dmg.sh` 自己构建到 `dist/`），把 App 拖进"应用程序"。App 用开发者证书签名但没有公证，第一次打开会被 macOS 拦截：macOS 15 及以上到"系统设置 → 隐私与安全性"里点"仍要打开"；macOS 14 在 Finder 里右键点 App，选"打开"。
-2. App 常驻在菜单栏，第一次打开会弹出设置窗口。填入 Worker 地址和你的 Access Key，点"Connect"。
+2. App 常驻在菜单栏，第一次打开会弹出设置窗口的 "Sync Group" 页。填入 Worker 地址和你的 Access Key，点"Connect"。
 3. 接着会弹出一个已经定位在 Safari 文件夹的选择框，点"Allow Access"。macOS 把 `~/Library/Safari` 列为受保护目录，任何 App 都不能自己读取，所以这一步授权是必需的，只需做一次。
-4. 设置窗口会显示一个配对码（例如 `K7PM-3QXD`，30 分钟内有效、只能用一次），拿去给 Chrome 或 Firefox 用。需要时可以点"New Pairing Code"重新生成。
+4. "Sync Group" 页会显示一个配对码（例如 `K7PM-3QXD`，30 分钟内有效、只能用一次），拿去给 Chrome 或 Firefox 用。需要时可以点"New Code"重新生成。
 
 之后 App 会自动同步：
 - `Bookmarks.plist` 变化时（每 15 秒检查一次）；
@@ -121,10 +121,11 @@ curl -X DELETE $W/v2/admin/groups/<pair_id> -H "$A"
 - 其他浏览器有改动时（通过 WebSocket 通知）；
 - 以及每 10 分钟一次。
 
-菜单栏会显示状态、等待写入 Safari 的书签数量，以及需要你确认的删除。设置窗口里可以查看和移除设备，也可以设置开机自动启动。
+菜单栏会显示状态、等待上传到 iCloud 的改动，以及需要你确认的删除。设置窗口分两页："General" 显示同步状态和需要处理的提醒，管理 Safari 访问权限、后台上传 iCloud、自动同步和开机启动；"Sync Group" 显示 Worker、配对码和设备，可以移除设备或退出同步组。版本号在菜单栏菜单的 "About" 里。
 
 写入 Safari 书签的保护措施：
-- 只在 Safari 没有运行时写入。
+- Safari 开着时也会写入。Safari 会监视书签文件，App 写入后它会重新载入，不会拿旧内容覆盖。代价是：写入前几秒内你在 Safari 里做了、还没保存的书签改动会被 Safari 丢掉；同步用的 Mac 很少用 Safari 时基本碰不到。
+- 万一 Safari 保存时丢了 App 刚写入的书签，App 不会把它当成"在 Safari 里删除"去删其他浏览器里的那一份，而是等 Safari 退出后重新写入。
 - 写入前先把原文件备份到 App 自己的目录，最多保留最近 20 份。
 - 写入后重新读取校验，失败就恢复原文件。
 
@@ -164,12 +165,13 @@ macos-app/scripts/generate.sh      # 生成 Xcode 工程后可以用 Xcode 打�
 swift scripts/make-icons.swift     # 重新生成 Mac App 和两个扩展的图标
 ```
 
-Mac App 的 Debug 版支持 `-snapshot-settings`（加 `-paired` 显示已连接的状态），会把设置窗口渲染成 PNG 保存到 App 的临时目录，用来检查排版。
+Mac App 的 Debug 版支持 `-snapshot-settings`（加 `-paired` 显示已连接的状态，`-notices` 显示提醒，`-dark` 深色模式），会把设置窗口的每一页渲染成 PNG 保存到 App 的临时目录，用来检查排版。
 
 ## 已知限制
 
 - **经 iCloud 同步依赖 Safari 的内部格式。** Safari 的 iCloud 同步只上传书签文件里 `Sync.Changes` 列出的改动，App 写入时会按 Safari 自己的格式记下这些改动（见 [docs/SYNC-V2.md](docs/SYNC-V2.md) 的 "iCloud" 一节），这样浏览器里的新增和删除会经 iCloud 传到你的其他苹果设备。这不是公开接口，Safari 更新后可能失效。
-  - Safari 打开时并不会马上上传这些改动。App 会通过 AppleScript 让 Safari 重新添加一条阅读列表项 "Safari Bookmarks Sync" 来触发上传，第一次需要在"系统设置 → 隐私与安全性 → 自动化"里允许 App 控制 Safari。不允许也可以：下一次你在 Safari 或其他苹果设备上改动书签时，这些改动会一起上传。
+  - 只有 Safari 自己保存一次书签改动后，这些改动才会上传。所以 App 写入大约 1 分钟后，会让 Safari 重新添加一条阅读列表项 "Safari Bookmarks Sync" 来触发上传，直到上传完成（最多等 2 分钟，失败会过一段时间再试）。Safari 没开时，App 会在后台隐藏打开 Safari，上传完再把它退出；期间你切到了 Safari，就不会退出。不想让 App 打开 Safari，可以在设置里关掉 "Upload to iCloud in the background"，这时只在你自己打开 Safari 后触发上传。
+  - 第一次需要在"系统设置 → 隐私与安全性 → 自动化"里允许 App 控制 Safari。不允许也可以：下一次你在 Safari 或其他苹果设备上改动书签时，这些改动会一起上传。
   - 2.1 之前的版本写进 Safari 的书签没有传到 iCloud，2.1 第一次写入时会把它们补上。
 - **没有公证。** 公证需要付费的 Apple Developer Program 会员；在此之前，第一次打开要按上面"安装与使用"里的步骤手动允许。
 - **浏览器里的书签顺序不按 Safari 排。** 书签会放进正确的文件夹，但在文件夹内的顺序不跟 Safari 保持一致。
