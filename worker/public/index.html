@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN"
+  data-title-zh="Safari Bookmarks Sync — 让 Safari 书签与 Chrome、Firefox 同步"
+  data-title-en="Safari Bookmarks Sync — Keep Safari bookmarks in sync with Chrome and Firefox"
+  data-description-zh="开源、自托管的 Safari 书签同步工具：以 Safari 为准，与 Chrome、Firefox 双向同步，并经 iCloud 到达 iPhone 和 iPad。"
+  data-description-en="Open-source, self-hosted bookmark sync: Safari decides, Chrome and Firefox follow in both directions, and changes reach your iPhone and iPad through iCloud.">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Safari Bookmarks Sync — 让 Safari 书签与 Chrome、Firefox 同步</title>
+  <meta name="description" content="开源、自托管的 Safari 书签同步工具：以 Safari 为准，与 Chrome、Firefox 双向同步，并经 iCloud 到达 iPhone 和 iPad。">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/site/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/site/site.css">
+  <!-- Picks the language before the page is drawn. -->
+  <script src="/site/site.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main"><span data-l="zh">跳到正文</span><span data-l="en">Skip to content</span></a>
+
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top" aria-label="Safari Bookmarks Sync">
+        <img src="/site/icon.svg" alt="" width="28" height="28">
+        <span>Safari Bookmarks Sync</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="#features"><span data-l="zh">功能</span><span data-l="en">Features</span></a>
+        <a href="#how"><span data-l="zh">工作方式</span><span data-l="en">How it works</span></a>
+        <a href="#start"><span data-l="zh">开始使用</span><span data-l="en">Get started</span></a>
+        <a href="#faq"><span data-l="zh">常见问题</span><span data-l="en">FAQ</span></a>
+      </nav>
+      <div class="nav-actions">
+        <div class="segmented" role="group" aria-label="Language / 语言">
+          <button type="button" data-set-lang="zh" aria-pressed="true">中文</button>
+          <button type="button" data-set-lang="en" aria-pressed="false">EN</button>
+        </div>
+        <a class="icon-link" href="https://github.com/lengmuning/bookmarks" aria-label="GitHub">
+          <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- Hero -->
+    <section class="hero" id="top">
+      <div class="wrap hero-inner">
+        <img class="hero-icon" src="/site/icon.svg" alt="" width="96" height="96">
+        <p class="eyebrow">
+          <span data-l="zh">开源 · 自托管 · Cloudflare Workers</span>
+          <span data-l="en">Open source · Self-hosted · Cloudflare Workers</span>
+        </p>
+        <h1>
+          <span data-l="zh">让 Safari 书签<br>与 Chrome、Firefox 保持同步</span>
+          <span data-l="en">Keep Safari bookmarks in sync<br>with Chrome and Firefox</span>
+        </h1>
+        <p class="lead">
+          <span data-l="zh">以 Safari 为准：书签放在哪个文件夹、叫什么名字，都跟 Safari 一致。在任何一个浏览器里新增或删除书签，其他地方都会跟着变化，并经 iCloud 同步到你的 iPhone 和 iPad。</span>
+          <span data-l="en">Safari is the source of truth: every bookmark's folder and title follow Safari. Add or delete a bookmark in any browser and the change reaches the others, and through iCloud your iPhone and iPad.</span>
+        </p>
+        <div class="cta">
+          <a class="btn btn-primary" href="https://github.com/lengmuning/bookmarks/releases/latest">
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M10 2a1 1 0 0 1 1 1v8.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42L9 11.6V3a1 1 0 0 1 1-1ZM4 15a1 1 0 0 1 1 1v1h10v-1a1 1 0 1 1 2 0v2a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1Z"/></svg>
+            <span data-l="zh">下载 Mac App</span><span data-l="en">Download for Mac</span>
+          </a>
+          <a class="btn btn-secondary" href="https://github.com/lengmuning/bookmarks">
+            <span data-l="zh">GitHub 源代码</span><span data-l="en">Source on GitHub</span>
+          </a>
+        </div>
+        <p class="requirements">
+          <span data-l="zh">macOS 14 或更新版本 · Apple 芯片和 Intel · Chrome 116+ · Firefox 桌面版</span>
+          <span data-l="en">macOS 14 or later · Apple silicon and Intel · Chrome 116+ · Firefox for desktop</span>
+        </p>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section class="section" id="features">
+      <div class="wrap">
+        <h2>
+          <span data-l="zh">功能</span><span data-l="en">Features</span>
+        </h2>
+        <div class="grid features">
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M6 3.5h12a1.5 1.5 0 0 1 1.5 1.5v15.2a.5.5 0 0 1-.8.4L12 16l-6.7 4.6a.5.5 0 0 1-.8-.4V5A1.5 1.5 0 0 1 6 3.5Z"/></svg>
+            </div>
+            <h3><span data-l="zh">以 Safari 为准</span><span data-l="en">Safari decides</span></h3>
+            <p>
+              <span data-l="zh">文件夹和标题都跟 Safari 一致。浏览器里已有的同网址书签会被移到对应位置，不会重复新建。</span>
+              <span data-l="en">Folders and titles follow Safari. A matching bookmark already in a browser is moved into place, never duplicated.</span>
+            </p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 8h13m0 0-3.5-3.5M17 8l-3.5 3.5M20 16H7m0 0 3.5-3.5M7 16l3.5 3.5"/></svg>
+            </div>
+            <h3><span data-l="zh">双向同步</span><span data-l="en">Both directions</span></h3>
+            <p>
+              <span data-l="zh">在 Chrome 或 Firefox 的 "Safari Bookmarks" 文件夹里新增的书签，会直接写入 Safari，Safari 开着也可以。</span>
+              <span data-l="en">Bookmarks added to the "Safari Bookmarks" folder in Chrome or Firefox are written straight into Safari, even while it's open.</span>
+            </p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4.5 7h15M10 11v6m4-6v6M6 7l1 12.5A1.5 1.5 0 0 0 8.5 21h7a1.5 1.5 0 0 0 1.5-1.5L18 7M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7"/></svg>
+            </div>
+            <h3><span data-l="zh">删除也同步</span><span data-l="en">Deletes sync too</span></h3>
+            <p>
+              <span data-l="zh">任意一端删除，其他端跟着删除。一次删除很多时会先请你确认，防止误删。</span>
+              <span data-l="en">Delete anywhere and it's gone everywhere. A large delete waits for your confirmation first.</span>
+            </p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.5 9.6 4.5 4.5 0 0 0 7 18.5Z"/></svg>
+            </div>
+            <h3><span data-l="zh">到达 iCloud</span><span data-l="en">Reaches iCloud</span></h3>
+            <p>
+              <span data-l="zh">从浏览器同步回来的改动会经 iCloud 传到 iPhone、iPad 和其他 Mac，不用你手动打开 Safari。</span>
+              <span data-l="en">Changes from your browsers travel through iCloud to your iPhone, iPad and other Macs, without you opening Safari.</span>
+            </p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v3A1.5 1.5 0 0 1 18.5 11h-13A1.5 1.5 0 0 1 4 9.5v-3Zm0 8A1.5 1.5 0 0 1 5.5 13h13a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5v-3ZM7.5 8h.01M7.5 16h.01"/></svg>
+            </div>
+            <h3><span data-l="zh">你自己的服务器</span><span data-l="en">Your own server</span></h3>
+            <p>
+              <span data-l="zh">服务端是部署在 Cloudflare 上的 Worker，免费额度足够个人使用。每个 Access Key 一个同步组，数据互相隔离。</span>
+              <span data-l="en">The server is a Cloudflare Worker; the free plan covers personal use. Each Access Key has its own sync group, isolated from the others.</span>
+            </p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 3.5 5 6.5v5c0 4.2 2.9 7.9 7 9 4.1-1.1 7-4.8 7-9v-5l-7-3Zm-3 8.5 2.2 2.2L15.5 10"/></svg>
+            </div>
+            <h3><span data-l="zh">写入前先备份</span><span data-l="en">Backups first</span></h3>
+            <p>
+              <span data-l="zh">Mac App 每次写入前备份 Safari 书签（保留最近 20 份）；浏览器扩展第一次连接前备份整个书签树。</span>
+              <span data-l="en">The Mac app backs up Safari's bookmarks before every write (the last 20 are kept); the extensions back up the whole bookmark tree before first connecting.</span>
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- How it works -->
+    <section class="section section-alt" id="how">
+      <div class="wrap">
+        <h2><span data-l="zh">工作方式</span><span data-l="en">How it works</span></h2>
+        <p class="section-lead">
+          <span data-l="zh">Mac 上的菜单栏 App 负责 Safari，浏览器扩展负责 Chrome 和 Firefox，它们都和你部署在 Cloudflare 上的 Worker 同步。有改动时，Worker 会通过 WebSocket 实时通知各端。</span>
+          <span data-l="en">A menu bar app on the Mac looks after Safari and browser extensions look after Chrome and Firefox; all of them sync with your Worker on Cloudflare, which tells every device about changes in real time over WebSocket.</span>
+        </p>
+        <div class="diagram" role="img" aria-label="Mac app and iCloud ⇄ Cloudflare Worker ⇄ Chrome and Firefox extensions">
+          <div class="node">
+            <div class="node-title"><span data-l="zh">Mac 菜单栏 App</span><span data-l="en">Mac menu bar app</span></div>
+            <p><span data-l="zh">读取并写回 Safari 的书签文件</span><span data-l="en">Reads and writes Safari's bookmarks file</span></p>
+            <div class="node-sub">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.5 9.6 4.5 4.5 0 0 0 7 18.5Z"/></svg>
+              <span data-l="zh">经 iCloud 到 iPhone、iPad</span><span data-l="en">iCloud to iPhone and iPad</span>
+            </div>
+          </div>
+          <div class="link" aria-hidden="true"><span></span></div>
+          <div class="node node-center">
+            <div class="node-title">Cloudflare Worker</div>
+            <p><span data-l="zh">每个同步组一个 SQLite Durable Object</span><span data-l="en">One SQLite Durable Object per sync group</span></p>
+          </div>
+          <div class="link" aria-hidden="true"><span></span></div>
+          <div class="node">
+            <div class="node-title"><span data-l="zh">Chrome / Firefox 扩展</span><span data-l="en">Chrome / Firefox extensions</span></div>
+            <p><span data-l="zh">维护 "Safari Bookmarks" 文件夹</span><span data-l="en">Keep the "Safari Bookmarks" folder</span></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Get started -->
+    <section class="section" id="start">
+      <div class="wrap">
+        <h2><span data-l="zh">开始使用</span><span data-l="en">Get started</span></h2>
+        <ol class="steps">
+          <li class="step">
+            <div class="step-head">
+              <span class="step-num" aria-hidden="true">1</span>
+              <h3><span data-l="zh">获取 Access Key</span><span data-l="en">Get an Access Key</span></h3>
+            </div>
+            <p>
+              <span data-l="zh">每位用户一个 Access Key，对应一个独立的同步组。想试用的话请<a href="#contact">联系作者</a>开通；也可以按 <a href="https://github.com/lengmuning/bookmarks#readme">GitHub 上的说明</a>把服务端部署到你自己的 Cloudflare 账号。</span>
+              <span data-l="en">Each user has one Access Key and their own sync group. To try it, <a href="#contact">contact the author</a>; or deploy the server to your own Cloudflare account by following the <a href="https://github.com/lengmuning/bookmarks#readme">instructions on GitHub</a>.</span>
+            </p>
+          </li>
+
+          <li class="step">
+            <div class="step-head">
+              <span class="step-num" aria-hidden="true">2</span>
+              <h3><span data-l="zh">安装 Mac App</span><span data-l="en">Install the Mac app</span></h3>
+            </div>
+            <ol class="substeps">
+              <li>
+                <span data-l="zh">从 GitHub 下载最新的 DMG，把 App 拖进"应用程序"。</span>
+                <span data-l="en">Download the latest DMG from GitHub and drag the app into Applications.</span>
+              </li>
+              <li>
+                <span data-l="zh">App 已签名但没有经过苹果公证，第一次打开会被拦截：macOS 15 及以上，到"系统设置 → 隐私与安全性"点"仍要打开"；macOS 14，在 Finder 里右键点 App，选"打开"。</span>
+                <span data-l="en">The app is signed but not notarized, so macOS blocks the first launch. On macOS 15 or later, open System Settings → Privacy &amp; Security and click "Open Anyway"; on macOS 14, Control-click the app in Finder and choose Open.</span>
+              </li>
+              <li>
+                <span data-l="zh">App 出现在菜单栏。在设置窗口的 "Sync Group" 页填入下面的 Worker 地址和你的 Access Key，点 "Connect"。</span>
+                <span data-l="en">The app appears in the menu bar. On the "Sync Group" page of its settings, enter the Worker address below and your Access Key, then click "Connect".</span>
+              </li>
+              <li>
+                <span data-l="zh">在弹出的选择框里点 "Allow Access"，允许 App 读取 Safari 书签。macOS 保护 Safari 文件夹，这一步只需做一次。</span>
+                <span data-l="en">In the panel that opens, click "Allow Access" so the app can read Safari's bookmarks. macOS protects the Safari folder; this is needed only once.</span>
+              </li>
+              <li>
+                <span data-l="zh">第一次上传到 iCloud 时，macOS 会询问是否允许 App 控制 Safari，请点"允许"。</span>
+                <span data-l="en">The first time it uploads to iCloud, macOS asks whether the app may control Safari; click Allow.</span>
+              </li>
+            </ol>
+            <div class="address">
+              <span class="address-label"><span data-l="zh">Worker 地址</span><span data-l="en">Worker address</span></span>
+              <code data-origin id="origin-1"><span data-l="zh">本页面的网址</span><span data-l="en">this page's address</span></code>
+              <button type="button" class="btn btn-small" data-copy="origin-1">
+                <span data-l="zh">复制</span><span data-l="en">Copy</span>
+              </button>
+            </div>
+            <a class="btn btn-primary" href="https://github.com/lengmuning/bookmarks/releases/latest">
+              <span data-l="zh">下载最新版本</span><span data-l="en">Download the latest version</span>
+            </a>
+          </li>
+
+          <li class="step">
+            <div class="step-head">
+              <span class="step-num" aria-hidden="true">3</span>
+              <h3><span data-l="zh">从 GitHub 安装浏览器扩展</span><span data-l="en">Install the browser extensions from GitHub</span></h3>
+            </div>
+            <p>
+              <span data-l="zh">下载项目的 ZIP 并解压，扩展分别在 <code>chrome-extension</code> 和 <code>firefox-extension</code> 文件夹里。</span>
+              <span data-l="en">Download the project as a ZIP and unzip it. The extensions are in the <code>chrome-extension</code> and <code>firefox-extension</code> folders.</span>
+            </p>
+            <a class="btn btn-secondary" href="https://github.com/lengmuning/bookmarks/archive/refs/heads/main.zip">
+              <span data-l="zh">下载 ZIP</span><span data-l="en">Download ZIP</span>
+            </a>
+            <div class="browsers">
+              <div class="browser">
+                <h4>Chrome</h4>
+                <ol class="substeps">
+                  <li>
+                    <span data-l="zh">在地址栏打开 <code>chrome://extensions</code>，开启右上角的"开发者模式"。</span>
+                    <span data-l="en">Open <code>chrome://extensions</code> in the address bar and turn on "Developer mode" at the top right.</span>
+                  </li>
+                  <li>
+                    <span data-l="zh">点"加载已解压的扩展程序"，选择 <code>chrome-extension</code> 文件夹。需要 Chrome 116 或更新版本。</span>
+                    <span data-l="en">Click "Load unpacked" and choose the <code>chrome-extension</code> folder. Requires Chrome 116 or later.</span>
+                  </li>
+                </ol>
+              </div>
+              <div class="browser">
+                <h4>Firefox</h4>
+                <ol class="substeps">
+                  <li>
+                    <span data-l="zh">在地址栏打开 <code>about:debugging#/runtime/this-firefox</code>。</span>
+                    <span data-l="en">Open <code>about:debugging#/runtime/this-firefox</code> in the address bar.</span>
+                  </li>
+                  <li>
+                    <span data-l="zh">点"临时载入附加组件"，选择 <code>firefox-extension</code> 文件夹里的 <code>manifest.json</code>。</span>
+                    <span data-l="en">Click "Load Temporary Add-on" and choose <code>manifest.json</code> in the <code>firefox-extension</code> folder.</span>
+                  </li>
+                </ol>
+                <p class="note">
+                  <span data-l="zh">这样载入的扩展在 Firefox 重启后会被移除，需要重新载入。</span>
+                  <span data-l="en">An add-on loaded this way is removed when Firefox restarts and has to be loaded again.</span>
+                </p>
+              </div>
+            </div>
+          </li>
+
+          <li class="step">
+            <div class="step-head">
+              <span class="step-num" aria-hidden="true">4</span>
+              <h3><span data-l="zh">配对浏览器</span><span data-l="en">Pair your browsers</span></h3>
+            </div>
+            <ol class="substeps">
+              <li>
+                <span data-l="zh">在 Mac App 的 "Sync Group" 页点 "Create Code"，生成一个配对码（30 分钟内有效，只能用一次）。</span>
+                <span data-l="en">On the Mac app's "Sync Group" page, click "Create Code" to get a pairing code (valid for 30 minutes, single use).</span>
+              </li>
+              <li>
+                <span data-l="zh">点浏览器里的扩展图标，填入 Worker 地址和配对码，点 "Connect"。扩展会先备份整个书签树再开始同步。</span>
+                <span data-l="en">Click the extension's icon in the browser, enter the Worker address and the pairing code, and click "Connect". The extension backs up your whole bookmark tree before syncing.</span>
+              </li>
+              <li>
+                <span data-l="zh">同步的书签在浏览器的"其他书签 › Safari Bookmarks"文件夹里。每个浏览器各需要一个配对码。</span>
+                <span data-l="en">Synced bookmarks live in "Other Bookmarks › Safari Bookmarks". Each browser needs its own pairing code.</span>
+              </li>
+            </ol>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section section-alt" id="faq">
+      <div class="wrap wrap-narrow">
+        <h2><span data-l="zh">常见问题</span><span data-l="en">FAQ</span></h2>
+        <div class="faq">
+          <details>
+            <summary>
+              <span data-l="zh">需要一直开着 Safari 吗？</span>
+              <span data-l="en">Does Safari have to stay open?</span>
+            </summary>
+            <p>
+              <span data-l="zh">不需要。Mac App 在 Safari 开着或关着时都能写入书签。需要上传到 iCloud 时，它会在后台隐藏打开 Safari，传完再退出；你在这期间用了 Safari 就不会退出。不想让它打开 Safari，可以在设置里关掉 "Upload to iCloud in the background"。</span>
+              <span data-l="en">No. The Mac app writes bookmarks whether Safari is open or not. When changes need to go to iCloud, it opens Safari hidden and quits it afterwards, unless you started using it in the meantime. To keep it from opening Safari, turn off "Upload to iCloud in the background" in its settings.</span>
+            </p>
+          </details>
+          <details>
+            <summary>
+              <span data-l="zh">阅读列表里为什么有一条 "Safari Bookmarks Sync"？</span>
+              <span data-l="en">Why is there a "Safari Bookmarks Sync" item in my Reading List?</span>
+            </summary>
+            <p>
+              <span data-l="zh">它用来启动 iCloud 上传。Safari 只会在自己保存一次改动后才上传到 iCloud，所以 App 让 Safari 重新添加这一条：已存在时 Safari 会替换它，不会重复。它不会同步到 Chrome 和 Firefox。Safari 添加这一条时会顺便打开阅读列表边栏。</span>
+              <span data-l="en">It starts the iCloud upload. Safari uploads only after it saves a change of its own, so the app has Safari add this item again; Safari replaces an existing one, so there is never a duplicate. It is never synced to Chrome or Firefox. Safari also opens the Reading List sidebar when it adds the item.</span>
+            </p>
+          </details>
+          <details>
+            <summary>
+              <span data-l="zh">一次删了很多书签会怎样？</span>
+              <span data-l="en">What if I delete a lot of bookmarks at once?</span>
+            </summary>
+            <p>
+              <span data-l="zh">在 Safari 一次消失超过 20 条且超过 10% 的书签时，Mac App 会先请你确认；在浏览器里 10 分钟内删除同样多的书签时，它们会先被放回，扩展图标上出现红色 "!"，在扩展弹窗里确认后才会在所有地方删除。</span>
+              <span data-l="en">If more than 20 bookmarks (and more than 10%) disappear from Safari at once, the Mac app asks you first. If you delete that many in a browser within 10 minutes, they are put back and the extension icon shows a red "!"; they are deleted everywhere only after you confirm in the extension's popup.</span>
+            </p>
+          </details>
+          <details>
+            <summary>
+              <span data-l="zh">我的数据存在哪里？</span>
+              <span data-l="en">Where is my data stored?</span>
+            </summary>
+            <p>
+              <span data-l="zh">存在 Worker 上属于你这个同步组的 SQLite Durable Object 里，不同 Access Key 的数据互相隔离。删除记录保留 90 天后自动清理。Safari 书签的备份只存在你自己的 Mac 上。</span>
+              <span data-l="en">In your sync group's own SQLite Durable Object on the Worker; data under different Access Keys is kept apart. Deleted entries are cleaned up after 90 days. Backups of Safari's bookmarks stay on your own Mac.</span>
+            </p>
+          </details>
+          <details>
+            <summary>
+              <span data-l="zh">有哪些限制？</span>
+              <span data-l="en">What are the limitations?</span>
+            </summary>
+            <ul>
+              <li>
+                <span data-l="zh">上传到 iCloud 依赖 Safari 书签文件的内部格式，不是苹果公开的接口，Safari 更新后可能失效。</span>
+                <span data-l="en">Uploading to iCloud relies on the internal format of Safari's bookmarks file, not a public Apple interface, so a Safari update can break it.</span>
+              </li>
+              <li>
+                <span data-l="zh">Mac App 没有经过苹果公证，第一次打开需要手动允许。</span>
+                <span data-l="en">The Mac app is not notarized, so you allow it by hand the first time.</span>
+              </li>
+              <li>
+                <span data-l="zh">书签会放进正确的文件夹，但文件夹内的顺序不跟 Safari 保持一致。</span>
+                <span data-l="en">Bookmarks land in the right folders, but the order inside a folder doesn't follow Safari.</span>
+              </li>
+              <li>
+                <span data-l="zh">每个同步组只有一台 Mac 负责 Safari；Firefox 只支持桌面版。</span>
+                <span data-l="en">One Mac per sync group looks after Safari; Firefox is supported on desktop only.</span>
+              </li>
+            </ul>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- Contact -->
+    <section class="section" id="contact">
+      <div class="wrap wrap-narrow">
+        <div class="contact">
+          <h2><span data-l="zh">联系作者</span><span data-l="en">Contact the author</span></h2>
+          <p>
+            <span data-l="zh">想试用、开通 Access Key，或者使用中遇到问题，都可以在 GitHub 上提交 Issue 联系作者。请不要在 Issue 里公开你的 Access Key。</span>
+            <span data-l="en">To try it, ask for an Access Key, or report a problem, open an issue on GitHub. Please don't post your Access Key in an issue.</span>
+          </p>
+          <div class="cta">
+            <a class="btn btn-primary" href="https://github.com/lengmuning/bookmarks/issues/new">
+              <span data-l="zh">在 GitHub 联系作者</span><span data-l="en">Contact on GitHub</span>
+            </a>
+            <a class="btn btn-secondary" href="https://github.com/lengmuning">
+              <span data-l="zh">作者主页</span><span data-l="en">Author's profile</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <span>© 2026 lengmuning</span>
+      <span class="footer-links">
+        <a href="https://github.com/lengmuning/bookmarks"><span data-l="zh">开源项目</span><span data-l="en">Open source</span></a>
+        <a href="https://github.com/lengmuning/bookmarks/releases"><span data-l="zh">版本历史</span><span data-l="en">Releases</span></a>
+      </span>
+    </div>
+  </footer>
+</body>
+</html>
