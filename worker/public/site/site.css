@@ -675,8 +675,42 @@ h4 {
   color: var(--muted);
 }
 
-.contact .cta {
-  margin-top: 26px;
+.contact-methods {
+  display: grid;
+  gap: 10px;
+  max-width: 440px;
+  margin: 26px auto 0;
+  text-align: left;
+}
+
+.contact-method {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border-radius: 10px;
+}
+
+.contact-label {
+  flex: none;
+  min-width: 3.5em;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.contact-value {
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+a.contact-value {
+  color: var(--accent);
+}
+
+.contact-method .btn-small {
+  margin-left: auto;
 }
 
 /* ------------------------------------------------------------------ footer */

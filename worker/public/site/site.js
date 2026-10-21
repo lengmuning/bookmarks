@@ -69,12 +69,26 @@
     var origins = document.querySelectorAll("[data-origin]");
     for (var j = 0; j < origins.length; j++) origins[j].textContent = location.origin;
 
+    // Where the clipboard is not allowed, the text is selected instead so it
+    // can be copied with ⌘C.
+    function select(element) {
+      var range = document.createRange();
+      range.selectNodeContents(element);
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
     var copies = document.querySelectorAll("[data-copy]");
     for (var k = 0; k < copies.length; k++) {
       copies[k].addEventListener("click", function (event) {
         var button = event.currentTarget;
         var target = document.getElementById(button.getAttribute("data-copy"));
-        if (!target || !navigator.clipboard) return;
+        if (!target) return;
+        if (!navigator.clipboard) {
+          select(target);
+          return;
+        }
         navigator.clipboard.writeText(target.textContent.trim()).then(function () {
           var labels = button.querySelectorAll("[data-l]");
           var previous = [];
@@ -85,6 +99,8 @@
           setTimeout(function () {
             for (var n = 0; n < labels.length; n++) labels[n].textContent = previous[n];
           }, 1500);
+        }, function () {
+          select(target);
         });
       });
     }

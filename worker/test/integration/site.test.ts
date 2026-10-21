@@ -15,6 +15,8 @@ describe("home page", () => {
     expect(page.headers.get("X-Content-Type-Options")).toBe("nosniff");
     const html = await page.text();
     expect(html).toContain("https://github.com/lengmuning/bookmarks/releases/latest");
+    expect(html).toContain("Itsuka_Sayonara");
+    expect(html).toContain("mailto:will.leng@ethtest.com");
     expect(html).toContain('data-l="zh"');
     expect(html).toContain('data-l="en"');
   });
