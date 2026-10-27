@@ -1,7 +1,8 @@
-// The public home page at "/": an introduction to the project with download
-// links. Static files from public/ (index.html, and public/site/ for its
-// stylesheet, script and icon), served with strict page headers. The page
-// fetches nothing, so the policy allows only its own files.
+// The public pages: the home page at "/" (an introduction with download links)
+// and the privacy policy at "/privacy". Static files from public/ (index.html,
+// privacy.html, and public/site/ for their stylesheet, script and icon),
+// served with strict page headers. The pages fetch nothing, so the policy
+// allows only their own files.
 
 const SITE_HEADERS: Record<string, string> = {
   "Content-Security-Policy":
@@ -15,7 +16,7 @@ const SITE_HEADERS: Record<string, string> = {
 };
 
 export function isSitePath(pathname: string): boolean {
-  return pathname === "/" || pathname.startsWith("/site/");
+  return pathname === "/" || pathname === "/privacy" || pathname.startsWith("/site/");
 }
 
 export async function handleSite(request: Request, env: Env): Promise<Response> {

@@ -179,6 +179,11 @@ h4 {
   gap: 12px;
 }
 
+/* Pages without section links keep the actions on the right. */
+.brand + .nav-actions {
+  margin-left: auto;
+}
+
 .segmented {
   display: inline-flex;
   padding: 2px;
@@ -711,6 +716,50 @@ a.contact-value {
 
 .contact-method .btn-small {
   margin-left: auto;
+}
+
+/* ------------------------------------------------------------------ policy page */
+
+.doc-page {
+  padding: 56px 0 72px;
+}
+
+.doc h1 {
+  font-size: clamp(30px, 4.4vw, 40px);
+  letter-spacing: -0.02em;
+}
+
+.doc-meta {
+  margin: 10px 0 32px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.doc h2 {
+  font-size: 21px;
+  margin: 36px 0 12px;
+}
+
+.doc p,
+.doc li {
+  font-size: 16px;
+}
+
+.doc p {
+  margin: 0 0 14px;
+}
+
+.doc ul {
+  margin: 0 0 14px;
+  padding-left: 1.3em;
+}
+
+.doc li {
+  margin: 8px 0;
+}
+
+.doc li::marker {
+  color: var(--muted);
 }
 
 /* ------------------------------------------------------------------ footer */

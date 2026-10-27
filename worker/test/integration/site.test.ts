@@ -21,6 +21,18 @@ describe("home page", () => {
     expect(html).toContain('data-l="en"');
   });
 
+  it("serves the privacy policy at /privacy", async () => {
+    const page = await get("/privacy");
+    expect(page.status).toBe(200);
+    expect(page.headers.get("Content-Type")).toContain("text/html");
+    expect(page.headers.get("Content-Security-Policy")).toContain("default-src 'none'");
+    const html = await page.text();
+    expect(html).toContain("<h1>Privacy Policy</h1>");
+    expect(html).toContain("<h1>隐私政策</h1>");
+    expect(html).toContain("Limited Use");
+    expect(html).toContain("mailto:will.leng@ethtest.com");
+  });
+
   it("serves its stylesheet, script and icon", async () => {
     const files: [string, string][] = [
       ["/site/site.css", "text/css"],
@@ -48,7 +60,7 @@ describe("home page", () => {
     expect(health.status).toBe(200);
     expect(((await health.json()) as { status: string }).status).toBe("ok");
 
-    for (const path of ["/index.html", "/nope", "/site.css"]) {
+    for (const path of ["/index.html", "/privacy.html", "/nope", "/site.css"]) {
       const response = await get(path);
       expect(response.status, path).toBe(404);
       expect(((await response.json()) as { error: string }).error, path).toBe("not_found");

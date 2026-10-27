@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en"
+  data-title-zh="隐私政策 — Safari Bookmarks Sync"
+  data-title-en="Privacy Policy — Safari Bookmarks Sync"
+  data-description-zh="Safari Bookmarks Sync（Mac App、Chrome 和 Firefox 扩展及同步服务）的隐私政策。"
+  data-description-en="Privacy policy of Safari Bookmarks Sync: the Mac app, the Chrome and Firefox extensions and the sync service.">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy — Safari Bookmarks Sync</title>
+  <meta name="description" content="Privacy policy of Safari Bookmarks Sync: the Mac app, the Chrome and Firefox extensions and the sync service.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/site/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/site/site.css">
+  <!-- Picks the language before the page is drawn. Without scripts the page is in English. -->
+  <script src="/site/site.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main"><span data-l="zh">跳到正文</span><span data-l="en">Skip to content</span></a>
+
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="/" aria-label="Safari Bookmarks Sync">
+        <img src="/site/icon.svg" alt="" width="28" height="28">
+        <span>Safari Bookmarks Sync</span>
+      </a>
+      <div class="nav-actions">
+        <div class="segmented" role="group" aria-label="Language / 语言">
+          <button type="button" data-set-lang="zh" aria-pressed="false">中文</button>
+          <button type="button" data-set-lang="en" aria-pressed="true">EN</button>
+        </div>
+        <a class="icon-link" href="https://github.com/lengmuning/bookmarks" aria-label="GitHub">
+          <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="doc-page">
+    <article class="wrap wrap-narrow doc">
+
+      <!-- ================================================================ English -->
+      <div data-l="en">
+        <h1>Privacy Policy</h1>
+        <p class="doc-meta">Last updated: October 27, 2026</p>
+
+        <p>Safari Bookmarks Sync keeps the bookmarks of Safari on a Mac in sync with Chrome and Firefox. It has three parts: a Mac app, browser extensions for Chrome and Firefox, and a sync server that runs as a Cloudflare Worker. This policy explains what data these parts handle when you use the sync service at <strong>https://bookmarks.ethtest.net</strong>, which is operated by the author, lengmuning ("we", "us").</p>
+        <p>The project is open source. If you deploy the sync server on your own Cloudflare account, your data is stored there instead, and you are responsible for it.</p>
+
+        <h2>The data we handle</h2>
+        <ul>
+          <li><strong>Bookmarks you sync.</strong> The address (URL), title, folder and position of each synced bookmark. From the browser extensions, these are the bookmarks inside the "Safari Bookmarks" folder. From the Mac app, these are Safari's bookmarks and Reading List items.</li>
+          <li><strong>Device information.</strong> For each connected device: its platform and name (for example "Chrome", "Firefox" or your Mac's name), when it was connected and when it was last active.</li>
+          <li><strong>Authentication information.</strong> Your Access Key, one-time pairing codes, and a token for each device. The Mac app keeps the Access Key in the macOS Keychain, and each device keeps its token on the device. The server stores device tokens and Access Keys only as hashes; the copy of an Access Key that we can show you again is encrypted.</li>
+          <li><strong>Network information.</strong> Your IP address, used only to limit repeated connection and sign-in attempts. Entries older than two hours are deleted the next time the service handles such a request. Cloudflare also keeps request logs (time, address and result of each request, without bookmark contents) for troubleshooting, for up to 7 days.</li>
+        </ul>
+        <p>We do not collect your browsing history, the content of web pages, analytics, or advertising identifiers.</p>
+
+        <h2>What stays on your device</h2>
+        <ul>
+          <li>The browser extensions read your whole bookmark tree <em>on your computer</em>, to find existing copies of synced bookmarks and to save a backup before the first connection. Bookmarks outside the "Safari Bookmarks" folder are not uploaded. The backup stays in the extension's local storage, and you can download it from the extension's popup.</li>
+          <li>The Mac app reads and writes Safari's bookmarks file on your Mac and keeps up to 20 backups of it there. It asks Safari (with your permission) to add one Reading List item, "Safari Bookmarks Sync", which starts Safari's own iCloud upload.</li>
+          <li>Bookmarks written into Safari are synced to your other Apple devices by Safari through your iCloud account, under Apple's privacy policy. We have no access to your iCloud account.</li>
+        </ul>
+
+        <h2>How we use data</h2>
+        <p>Only to provide the sync: to store your bookmarks, send changes between your devices, show your devices in the Mac app, and keep the service secure and working. We do not sell your data, use it for advertising, use it to determine creditworthiness or for lending, or use it for any purpose unrelated to syncing your bookmarks.</p>
+        <p>The use of information received through the Chrome extension adheres to the <a href="https://developer.chrome.com/docs/webstore/program-policies/policies">Chrome Web Store User Data Policy</a>, including the Limited Use requirements.</p>
+
+        <h2>Sharing</h2>
+        <p>We do not sell, rent or share your data with third parties. The service runs on Cloudflare, which stores and processes the data on our behalf as our hosting provider (<a href="https://www.cloudflare.com/privacypolicy/">Cloudflare's privacy policy</a>). We may disclose data if the law requires it.</p>
+        <p>We do not read your bookmarks, except when you ask us to help with a problem, when it is necessary for security (for example, to investigate abuse), or when the law requires it.</p>
+
+        <h2>Storage and security</h2>
+        <p>All data is sent over HTTPS. Each sync group is stored in its own isolated database (a Cloudflare Durable Object) and cannot be accessed by other users. Cloudflare may store and process data in data centers in different countries.</p>
+
+        <h2>How long we keep data</h2>
+        <ul>
+          <li>Bookmarks and device records: as long as your sync group exists. A deleted bookmark is kept as a deletion record for 90 days, so your other devices can apply the deletion, and is then removed.</li>
+          <li>Pairing codes: until used or for 30 minutes at most.</li>
+          <li>IP addresses for rate limiting: about two hours, as described above.</li>
+          <li>Cloudflare request logs: up to 7 days.</li>
+        </ul>
+
+        <h2>Your choices</h2>
+        <ul>
+          <li>To stop syncing a browser, click "Disconnect" in the extension's popup. To remove a device or leave the sync group, use the Mac app's settings.</li>
+          <li>To delete all your data from the server (your sync group, its bookmarks and devices, and your Access Key), contact us and we will delete it.</li>
+          <li>Removing an extension deletes its local data, including the backup. To remove the Mac app's local data and backups, delete the app and the folder <code>~/Library/Containers/com.lengmuning.bookmarks-sync</code>.</li>
+        </ul>
+
+        <h2>Children</h2>
+        <p>The service is not directed to children under 13, and we do not knowingly collect data from them.</p>
+
+        <h2>Changes to this policy</h2>
+        <p>When this policy changes, we update this page and the date at the top.</p>
+
+        <h2>Contact</h2>
+        <p>Questions or requests about your data:</p>
+        <ul>
+          <li>Email: <a href="mailto:will.leng@ethtest.com">will.leng@ethtest.com</a></li>
+          <li>WeChat: Itsuka_Sayonara</li>
+        </ul>
+      </div>
+
+      <!-- ================================================================ 中文 -->
+      <div data-l="zh">
+        <h1>隐私政策</h1>
+        <p class="doc-meta">最后更新：2026 年 10 月 27 日</p>
+
+        <p>Safari Bookmarks Sync 用于在 Mac 上的 Safari 与 Chrome、Firefox 之间同步书签，由三部分组成：Mac App、Chrome 和 Firefox 浏览器扩展，以及运行在 Cloudflare Worker 上的同步服务。本政策说明你使用作者 lengmuning（下称"我们"）运营的同步服务 <strong>https://bookmarks.ethtest.net</strong> 时，这些部分会处理哪些数据。</p>
+        <p>本项目是开源的。如果你把同步服务部署到自己的 Cloudflare 账号，数据就存放在你自己的账号里，由你自己负责。</p>
+
+        <h2>我们处理的数据</h2>
+        <ul>
+          <li><strong>你同步的书签。</strong>每个同步书签的网址（URL）、标题、所在文件夹和位置。来自浏览器扩展的，是 "Safari Bookmarks" 文件夹里的书签；来自 Mac App 的，是 Safari 的书签和阅读列表条目。</li>
+          <li><strong>设备信息。</strong>每台已连接设备的平台和名称（例如 "Chrome"、"Firefox" 或你的 Mac 的名称），以及连接时间和最近活动时间。</li>
+          <li><strong>身份验证信息。</strong>你的 Access Key、一次性配对码和每台设备的令牌。Mac App 把 Access Key 存在 macOS 钥匙串里，每台设备把自己的令牌存在本机。服务器只保存设备令牌和 Access Key 的哈希值；为了能再次向你显示 Access Key 而保存的副本是加密的。</li>
+          <li><strong>网络信息。</strong>你的 IP 地址，只用来限制重复的连接和登录尝试；超过两小时的记录会在服务下一次处理这类请求时删除。Cloudflare 还会保存请求日志（每个请求的时间、地址和结果，不含书签内容）用于排查故障，最多保留 7 天。</li>
+        </ul>
+        <p>我们不收集你的浏览历史、网页内容、统计分析数据或广告标识符。</p>
+
+        <h2>只留在你设备上的数据</h2>
+        <ul>
+          <li>浏览器扩展会<em>在你的电脑上</em>读取整个书签树，用来找到已同步书签的现有副本，并在第一次连接前保存一份备份。"Safari Bookmarks" 文件夹以外的书签不会上传。备份只存在扩展的本地存储里，你可以在扩展弹窗里下载它。</li>
+          <li>Mac App 在你的 Mac 上读写 Safari 的书签文件，并在本机保留最多 20 份备份。它会（在你允许后）让 Safari 添加一条阅读列表条目 "Safari Bookmarks Sync"，用来启动 Safari 自己的 iCloud 上传。</li>
+          <li>写入 Safari 的书签由 Safari 通过你的 iCloud 账号同步到你的其他苹果设备，适用苹果的隐私政策。我们无法访问你的 iCloud 账号。</li>
+        </ul>
+
+        <h2>我们如何使用数据</h2>
+        <p>只用于提供同步服务：保存你的书签、在你的设备之间传递改动、在 Mac App 里显示你的设备，以及保障服务安全和正常运行。我们不会出售你的数据，不会用于广告、信用评估或借贷，也不会用于与同步书签无关的任何用途。</p>
+        <p>通过 Chrome 扩展获得的信息，其使用遵守 <a href="https://developer.chrome.com/docs/webstore/program-policies/policies">Chrome 应用商店用户数据政策</a>，包括其中的"有限使用"要求。</p>
+
+        <h2>数据共享</h2>
+        <p>我们不会向第三方出售、出租或共享你的数据。服务运行在 Cloudflare 上，Cloudflare 作为托管服务商代我们存储和处理数据（<a href="https://www.cloudflare.com/privacypolicy/">Cloudflare 隐私政策</a>）。法律要求时，我们可能会依法披露数据。</p>
+        <p>我们不会查看你的书签，除非你请我们帮忙处理问题、出于安全需要（例如调查滥用），或法律要求。</p>
+
+        <h2>存储与安全</h2>
+        <p>所有数据都通过 HTTPS 传输。每个同步组存放在各自独立的数据库（Cloudflare Durable Object）里，其他用户无法访问。Cloudflare 可能在不同国家的数据中心存储和处理数据。</p>
+
+        <h2>数据保留期限</h2>
+        <ul>
+          <li>书签和设备记录：在你的同步组存在期间一直保留。删除的书签会以删除记录的形式保留 90 天，让你的其他设备同步这次删除，之后彻底清除。</li>
+          <li>配对码：使用后或最多 30 分钟后失效。</li>
+          <li>用于限流的 IP 地址：约两小时，如上所述。</li>
+          <li>Cloudflare 请求日志：最多 7 天。</li>
+        </ul>
+
+        <h2>你的选择</h2>
+        <ul>
+          <li>要停止同步某个浏览器，在扩展弹窗里点 "Disconnect"。要移除设备或退出同步组，在 Mac App 的设置里操作。</li>
+          <li>要删除服务器上你的全部数据（你的同步组及其书签、设备和你的 Access Key），请联系我们，我们会为你删除。</li>
+          <li>卸载扩展会删除它的本地数据，包括备份。要删除 Mac App 的本地数据和备份，请删除 App 以及文件夹 <code>~/Library/Containers/com.lengmuning.bookmarks-sync</code>。</li>
+        </ul>
+
+        <h2>儿童</h2>
+        <p>本服务不面向 13 岁以下的儿童，我们不会有意收集他们的数据。</p>
+
+        <h2>政策变更</h2>
+        <p>本政策有变化时，我们会更新本页面和页首的日期。</p>
+
+        <h2>联系我们</h2>
+        <p>关于你的数据的问题或请求：</p>
+        <ul>
+          <li>邮箱：<a href="mailto:will.leng@ethtest.com">will.leng@ethtest.com</a></li>
+          <li>微信：Itsuka_Sayonara</li>
+        </ul>
+      </div>
+    </article>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <span>© 2026 lengmuning</span>
+      <span class="footer-links">
+        <a href="/"><span data-l="zh">首页</span><span data-l="en">Home</span></a>
+        <a href="https://github.com/lengmuning/bookmarks"><span data-l="zh">开源项目</span><span data-l="en">Open source</span></a>
+      </span>
+    </div>
+  </footer>
+</body>
+</html>

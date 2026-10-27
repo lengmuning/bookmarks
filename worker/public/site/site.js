@@ -30,7 +30,9 @@
       if (/^zh\b/i.test(languages[i])) return "zh";
       if (/^en\b/i.test(languages[i])) return "en";
     }
-    return "zh";
+    // Otherwise the page's own language (Chinese for the home page, English
+    // for the privacy policy).
+    return root.lang === "en" ? "en" : "zh";
   }
 
   function apply(lang) {
